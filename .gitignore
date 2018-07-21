@@ -1,3 +1,7 @@
+.stack-work/
+qubism.cabal
+*~
+
 dist
 dist-*
 cabal-dev
