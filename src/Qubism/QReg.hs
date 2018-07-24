@@ -12,7 +12,7 @@ Maintainer  : keith@qubitrot.org
 {-# LANGUAGE TypeOperators       #-}
 
 module Qubism.QReg
-  ( QReg
+  ( QReg (UnsafeMkQReg)
   , mkQReg
   , mkQubit
   , normalize
@@ -36,36 +36,37 @@ import qualified Numeric.LinearAlgebra as LA
 import Qubism.CReg
 
 newtype QReg (n :: Nat) =
-  QReg (LA.Vector C)
+  UnsafeMkQReg (LA.Vector C)
   deriving (Eq)
 
 instance Show (QReg n) where
-  show (QReg zs) = foldl show' "" $ LA.toList zs
+  show (UnsafeMkQReg zs) = foldl show' "" $ LA.toList zs
     where show' str z = str ++ show z ++ "\n"
 
 -- | QReg's are intialized to |0>
 mkQReg :: Sing n -> QReg n
-mkQReg s = QReg $ l |> (1 : repeat 0) where l = (2 ^) $ fromSing s
+mkQReg s = UnsafeMkQReg $ l |> (1 : repeat 0) where l = (2 ^) $ fromSing s
 
 -- | A qubit is just a QReg 1, initalized to |0>
 mkQubit :: QReg 1
-mkQubit = QReg $ LA.fromList [1, 0]
+mkQubit = UnsafeMkQReg $ LA.fromList [1, 0]
 
 normalize :: QReg n -> QReg n
-normalize (QReg zs) = QReg $ LA.normalize zs
+normalize (UnsafeMkQReg zs) = UnsafeMkQReg $ LA.normalize zs
 
 -- | The tensor product on elements of our Hilbert space
 tensor :: QReg n -> QReg m -> QReg (n + m)
-tensor (QReg zs) (QReg ws) = QReg $ LA.flatten (zs `LA.outer` ws)
+tensor (UnsafeMkQReg zs) (UnsafeMkQReg ws) =
+  UnsafeMkQReg $ LA.flatten (zs `LA.outer` ws)
 
 -- | The sesquilinear inner product on our Hilbert space
 inner :: QReg n -> QReg m -> C
-inner (QReg zs) (QReg ws) = LA.conj zs <.> ws
+inner (UnsafeMkQReg zs) (UnsafeMkQReg ws) = LA.conj zs <.> ws
 
 -- | Collapse a QReg to a state compatable with qubit <n> being measured <bit>.
 -- Only occurs physically with measurement, so internal use only.
 collapse :: forall n . KnownNat n => Finite n -> Bit -> QReg n -> QReg n
-collapse i b (QReg zs) = normalize . QReg $ zs * mask
+collapse i b (UnsafeMkQReg zs) = normalize . UnsafeMkQReg $ zs * mask
   where
     mask   = l |> altseq
     altseq = replicate m ifZero ++ replicate m ifOne ++ altseq
