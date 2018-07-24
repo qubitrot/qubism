@@ -37,6 +37,7 @@ import Qubism.CReg
 
 newtype QReg (n :: Nat) =
   QReg (LA.Vector C)
+  deriving (Eq)
 
 instance Show (QReg n) where
   show (QReg zs) = foldl show' "" $ LA.toList zs
