@@ -27,7 +27,7 @@ import Data.Singletons
 import Data.Singletons.TypeLits
 import Data.Finite
 
-import           Control.Monad.Random hiding (fromList)
+import           Control.Monad.Random
 import           Control.Monad.Trans.State
 import           Data.Complex
 import           Numeric.LinearAlgebra (C,(|>),(<.>))
@@ -37,7 +37,11 @@ import Qubism.CReg
 
 newtype QReg (n :: Nat) =
   UnsafeMkQReg (LA.Vector C)
-  deriving (Eq)
+
+-- | To provide "close enough" equality testing.
+instance Eq (QReg n) where
+  UnsafeMkQReg zs == UnsafeMkQReg ws = 
+     LA.norm_2 (zs - ws) < 0.000001
 
 instance Show (QReg n) where
   show (UnsafeMkQReg zs) = foldl show' "" $ LA.toList zs
@@ -72,7 +76,7 @@ collapse i b (UnsafeMkQReg zs) = normalize . UnsafeMkQReg $ zs * mask
     altseq = replicate m ifZero ++ replicate m ifOne ++ altseq
     ifZero = if b == Zero then 1 else 0
     ifOne  = if b == One then 1 else 0
-    l      = (2 ^) $ fromSing (sing :: Sing n)
+    l      = 2 ^ fromSing (sing :: Sing n)
     m      = l `quot` (2 ^ (getFinite i + 1))
 
 -- | Preforms a measurement of an induvidual qubit (indexed Finite n) 
