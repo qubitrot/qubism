@@ -34,11 +34,16 @@ import qualified Numeric.LinearAlgebra as LA
 import Qubism.QReg
 
 newtype QGate (n :: Nat) = 
-  UnsafeMkQGate (LA.Matrix C) -- must be a (2^n) x (2^n) matrix
+  UnsafeMkQGate (LA.Matrix C) -- must be a (2^n) x (2^n) unitary matrix
   deriving (Show, Eq)
+
+instance KnownNat n => Monoid (QGate n) where
+  mempty = ident
+  mappend (UnsafeMkQGate a) (UnsafeMkQGate b) = UnsafeMkQGate $ a LA.<> b
 
 -- | Apply a quantum gate to a quantum register. Note that this
 -- operator conflicts with the one from Numeric.LinearAlgebra.
+infixr 5 #>
 (#>) :: QGate n -> QReg n -> QReg n
 (#>) (UnsafeMkQGate m) (UnsafeMkQReg v) = UnsafeMkQReg $ m LA.#> v
 
