@@ -21,6 +21,8 @@ module Qubism.QGate
   , hadamard
   , unitary
   , kronecker
+  , onJust
+  , onEvery
   ) where
 
 -- For dependent typing
@@ -93,11 +95,16 @@ kronecker (UnsafeMkQGate a) (UnsafeMkQGate b) =
 
 -- | Promote a 1-qubit gate to an n-qubit gate with the original gate acting 
 -- on qubit i. Other qubits are unaffected.
-promote :: forall n . KnownNat n => QGate 1 -> Finite n  -> QGate n
-promote (UnsafeMkQGate m) i = UnsafeMkQGate $ -- it should be possible to do
+onJust :: forall n . KnownNat n => QGate 1 -> Finite n  -> QGate n
+onJust (UnsafeMkQGate m) i = UnsafeMkQGate $  -- it should be possible to do
   pre `LA.kronecker` m `LA.kronecker` post    -- this with just QGate's 
-  where pre  = LA.ident $ 2^j                 -- kronkecer, but I can't get
+  where pre  = LA.ident $ 2^j                 -- kronecker, but I can't get
         post = LA.ident $ 2^(n-j-1)           -- the types to check.
         j    = fromIntegral $ getFinite i
         n    = fromIntegral $ fromSing (sing :: Sing n)
 
+-- | Promote a 1-qubit gate to an n-qubit gate which acts on every qubit
+-- identically.
+onEvery :: forall n . KnownNat n => QGate 1 -> QGate n
+onEvery (UnsafeMkQGate m) = UnsafeMkQGate $ iterate (LA.kronecker m) m !! (n-1)
+  where n = fromIntegral $ fromSing (sing :: Sing n)
