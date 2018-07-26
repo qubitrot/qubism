@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE KindSignatures #-}
 
 module Qubism.QRegSpec (genQReg, spec) where
 
@@ -24,7 +23,7 @@ genC = do
   pure $ a :+ b
 
 genQReg :: forall n . KnownNat n => Gen (QReg n)
-genQReg = fmap (normalize . UnsafeMkQReg . LA.fromList) $ vectorOf l genC
+genQReg = normalize . UnsafeMkQReg . LA.fromList <$> vectorOf l genC
   where l = (2 ^) . fromIntegral . fromSing $ (sing :: Sing n)
 
 propIdempotent
@@ -40,13 +39,13 @@ propIdempotent st a = do
 
 spec :: Spec
 spec = do
-  describe "measure" $ do
+  describe "measure" $ 
     it "is idempotent"
       $ property
       $ monadicIO
       $ forAllM (genQReg :: Gen (QReg 1)) --TODO tests for larger QRegs
       $ propIdempotent measure
-  describe "measureQubit" $ do
+  describe "measureQubit" $ 
     it "is idempotent"
       $ property
       $ monadicIO

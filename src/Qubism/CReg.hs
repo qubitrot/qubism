@@ -30,4 +30,4 @@ mkCReg :: [Bit] -> CReg n
 mkCReg = CReg . V.fromList
 
 instance Show (CReg n) where
-  show (CReg bs) = concat . fmap show $ bs
+  show (CReg bs) = concatMap show bs

@@ -75,7 +75,7 @@ collapse i b (UnsafeMkQReg zs) = normalize . UnsafeMkQReg $ zs * mask
     mask   = l |> altseq
     altseq = replicate m ifZero ++ replicate m ifOne ++ altseq
     ifZero = if b == Zero then 1 else 0
-    ifOne  = if b == One then 1 else 0
+    ifOne  = if b == One  then 1 else 0
     l      = 2 ^ fromSing (sing :: Sing n)
     m      = l `quot` (2 ^ (getFinite i + 1))
 
@@ -88,13 +88,13 @@ measureQubit i = do
   let qrZero = collapse i Zero qr
       qrOne  = collapse i One qr
       pOne   = realPart $ qrOne `inner` qr -- guaranteed to be real, so this
-  case r < pOne of                         -- is just a type-cast.
-    True  -> put qrOne >> pure One
-    False -> put qrZero >> pure Zero
+  if r < pOne                              -- is just a type-cast.
+    then put qrOne  >> pure One
+    else put qrZero >> pure Zero
 
 -- | Preform a measurement on all qubits in a quantum register, returning a 
 -- computational basis state.
 measure
   :: forall m n . (MonadRandom m, KnownNat n) => StateT (QReg n) m (CReg n)
-measure = traverse measureQubit (take n [0 ..]) >>= pure . mkCReg
+measure = mkCReg <$> traverse measureQubit (take n [0 ..])
   where n = fromIntegral $ fromSing (sing :: Sing n)

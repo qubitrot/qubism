@@ -72,7 +72,7 @@ pauliZ = UnsafeMkQGate $
           0 :+ 0, (-1) :+ 0]
 
 hadamard :: QGate 1
-hadamard = UnsafeMkQGate $ 1/(sqrt 2) *
+hadamard = UnsafeMkQGate $ 1 / sqrt 2 *
   (2><2) [1 :+ 0, 1 :+ 0,
           1 :+ 0, (-1) :+ 0]
 
