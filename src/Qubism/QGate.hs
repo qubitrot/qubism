@@ -32,9 +32,11 @@ import Data.Singletons.TypeLits
 import Data.Finite
 
 import           Data.Complex
-import           Numeric.LinearAlgebra (C, (><))
+import           Data.Monoid
+import           Numeric.LinearAlgebra ((><))
 import qualified Numeric.LinearAlgebra as LA
 
+import Qubism.Algebra
 import Qubism.QReg
 
 newtype QGate (n :: Nat) = 
@@ -44,6 +46,19 @@ newtype QGate (n :: Nat) =
 instance KnownNat n => Monoid (QGate n) where
   mempty = ident
   mappend (UnsafeMkQGate a) (UnsafeMkQGate b) = UnsafeMkQGate $ a LA.<> b
+
+instance KnownNat n => VectorSpace (QGate n) where
+  zero = UnsafeMkQGate . (l><l) $ repeat 0 where l = internalLen (sing :: Sing n)
+  z                 .: (UnsafeMkQGate b) = UnsafeMkQGate $ LA.scalar z * b
+  (UnsafeMkQGate a) +: (UnsafeMkQGate b) = UnsafeMkQGate $ a + b
+  (UnsafeMkQGate a) -: (UnsafeMkQGate b) = UnsafeMkQGate $ a - b
+
+instance KnownNat n => Algebra (QGate n) where
+  one  = ident
+  (*:) = (<>)
+
+internalLen :: (KnownNat n, Num a) => Sing n -> a
+internalLen = (2 ^) . fromIntegral . fromSing 
 
 -- | Apply a quantum gate to a quantum register. Note that this
 -- operator conflicts with the one from Numeric.LinearAlgebra.
