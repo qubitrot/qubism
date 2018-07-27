@@ -61,8 +61,8 @@ internalLen :: (KnownNat n, Num a) => Sing n -> a
 internalLen = (2 ^) . fromIntegral . fromSing 
 
 -- | QReg's are intialized to |0>
-mkQReg :: KnownNat n => Sing n -> QReg n
-mkQReg s = UnsafeMkQReg $ internalLen s |> (1 : repeat 0) 
+mkQReg :: forall n . KnownNat n => QReg n
+mkQReg = UnsafeMkQReg $ internalLen (sing :: Sing n) |> (1 : repeat 0) 
 
 -- | A qubit is just a QReg 1, initalized to |0>
 mkQubit :: QReg 1
