@@ -35,4 +35,5 @@ class VectorSpace a => Algebra a where
 commutator :: Algebra v  => v -> v -> v
 commutator a b = (a *: b) -: (b *: a)
 
-
+anticommutator :: Algebra v => v -> v -> v
+anticommutator a b = (a *: b) +: (b *: a)
