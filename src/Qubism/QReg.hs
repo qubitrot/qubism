@@ -61,8 +61,8 @@ internalLen :: (KnownNat n, Num a) => Sing n -> a
 internalLen = (2 ^) . fromIntegral . fromSing 
 
 -- | QReg's are intialized to |0>
-mkQReg :: Sing n -> QReg n
-mkQReg s = UnsafeMkQReg $ l |> (1 : repeat 0) where l = (2 ^) $ fromSing s
+mkQReg :: KnownNat n => Sing n -> QReg n
+mkQReg s = UnsafeMkQReg $ internalLen s |> (1 : repeat 0) 
 
 -- | A qubit is just a QReg 1, initalized to |0>
 mkQubit :: QReg 1
@@ -85,7 +85,7 @@ collapse i b (UnsafeMkQReg zs) = normalize . UnsafeMkQReg $ zs * mask
     altseq = replicate m ifZero ++ replicate m ifOne ++ altseq
     ifZero = if b == Zero then 1 else 0
     ifOne  = if b == One  then 1 else 0
-    l      = 2 ^ fromSing (sing :: Sing n)
+    l      = internalLen (sing :: Sing n)
     m      = l `quot` (2 ^ (getFinite i + 1))
 
 -- | Preforms a measurement of an induvidual qubit (indexed Finite n) 

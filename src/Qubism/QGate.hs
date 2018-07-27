@@ -67,8 +67,7 @@ infixr 5 #>
 (#>) (UnsafeMkQGate m) (UnsafeMkQReg v) = UnsafeMkQReg $ m LA.#> v
 
 ident :: forall n . KnownNat n => QGate n
-ident = UnsafeMkQGate $ LA.ident l
-  where l = (2^) . fromIntegral $ fromSing (sing :: Sing n)
+ident = UnsafeMkQGate . LA.ident $ internalLen (sing :: Sing n)
 
 -- | Also known as a NOT gate
 pauliX :: QGate 1
