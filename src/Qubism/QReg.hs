@@ -30,9 +30,10 @@ import Data.Finite
 import           Control.Monad.Random
 import           Control.Monad.Trans.State
 import           Data.Complex
-import           Numeric.LinearAlgebra (C,(|>),(<.>))
+import           Numeric.LinearAlgebra ((|>))
 import qualified Numeric.LinearAlgebra as LA
 
+import Qubism.Algebra
 import Qubism.CReg
 
 newtype QReg (n :: Nat) =
@@ -43,9 +44,21 @@ instance Eq (QReg n) where
   UnsafeMkQReg zs == UnsafeMkQReg ws = 
      LA.norm_2 (zs - ws) < 0.000001
 
+instance KnownNat n => VectorSpace (QReg n) where
+  zero = UnsafeMkQReg $ internalLen (sing :: Sing n) |> repeat 0 
+  z                .: (UnsafeMkQReg a) = UnsafeMkQReg $ LA.scalar z * a
+  (UnsafeMkQReg a) +: (UnsafeMkQReg b) = UnsafeMkQReg $ a + b
+  (UnsafeMkQReg a) -: (UnsafeMkQReg b) = UnsafeMkQReg $ a - b
+
+instance KnownNat n => HilbertSpace (QReg n) where
+  (UnsafeMkQReg zs) <.> (UnsafeMkQReg ws) = LA.conj zs LA.<.> ws
+
 instance Show (QReg n) where
   show (UnsafeMkQReg zs) = foldl show' "" $ LA.toList zs
     where show' str z = str ++ show z ++ "\n"
+
+internalLen :: (KnownNat n, Num a) => Sing n -> a
+internalLen = (2 ^) . fromIntegral . fromSing 
 
 -- | QReg's are intialized to |0>
 mkQReg :: Sing n -> QReg n
@@ -62,10 +75,6 @@ normalize (UnsafeMkQReg zs) = UnsafeMkQReg $ LA.normalize zs
 tensor :: QReg n -> QReg m -> QReg (n + m)
 tensor (UnsafeMkQReg zs) (UnsafeMkQReg ws) =
   UnsafeMkQReg $ LA.flatten (zs `LA.outer` ws)
-
--- | The sesquilinear inner product on our Hilbert space
-inner :: QReg n -> QReg m -> C
-inner (UnsafeMkQReg zs) (UnsafeMkQReg ws) = LA.conj zs <.> ws
 
 -- | Collapse a QReg to a state compatable with qubit <n> being measured <bit>.
 -- Only occurs physically with measurement, so internal use only.
@@ -87,8 +96,8 @@ measureQubit i = do
   r  <- getRandomR (0, 1)
   let qrZero = collapse i Zero qr
       qrOne  = collapse i One qr
-      pOne   = realPart $ qrOne `inner` qr -- guaranteed to be real, so this
-  if r < pOne                              -- is just a type-cast.
+      pOne   = realPart $ qrOne <.> qr -- guaranteed to be real, so this
+  if r < pOne                          -- is just a type-cast.
     then put qrOne  >> pure One
     else put qrZero >> pure Zero
 
