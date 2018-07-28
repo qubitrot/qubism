@@ -71,6 +71,9 @@ mkQubit = UnsafeMkQReg $ LA.fromList [1, 0]
 normalize :: QReg n -> QReg n
 normalize (UnsafeMkQReg zs) = UnsafeMkQReg $ LA.normalize zs
 
+adjoint :: KnownNat n => QReg n -> (QReg n -> C)
+adjoint qr = (qr <.>)
+
 -- | The tensor product on elements of our Hilbert space
 tensor :: QReg n -> QReg m -> QReg (n + m)
 tensor (UnsafeMkQReg zs) (UnsafeMkQReg ws) =
