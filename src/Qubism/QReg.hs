@@ -48,7 +48,7 @@ instance KnownNat n => VectorSpace (QReg n) where
   zero = UnsafeMkQReg $ internalLen (sing :: Sing n) |> repeat 0 
   z                .: (UnsafeMkQReg a) = UnsafeMkQReg $ LA.scalar z * a
   (UnsafeMkQReg a) +: (UnsafeMkQReg b) = UnsafeMkQReg $ a + b
-  (UnsafeMkQReg a) -: (UnsafeMkQReg b) = UnsafeMkQReg $ a - b
+  neg (UnsafeMkQReg a) = UnsafeMkQReg $ -a
 
 instance KnownNat n => HilbertSpace (QReg n) where
   (UnsafeMkQReg zs) <.> (UnsafeMkQReg ws) = LA.conj zs LA.<.> ws

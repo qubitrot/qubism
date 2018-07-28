@@ -14,12 +14,13 @@ import Data.Monoid
 type C = Complex Double
 
 -- | A vector space over the complex numbers
-class VectorSpace v where
+class Eq v => VectorSpace v where
   zero :: v           -- | The additive identity
   (.:) :: C -> v -> v -- | Scalar multiplication
   (+:) :: v -> v -> v -- | Vector addition
   (-:) :: v -> v -> v -- | Vector subtraction
-  a -: b = a +: ((-1) .: b)
+  neg  :: v -> v      -- | Inverse element
+  a -: b = a +: (neg  b)
 
 -- | A Hilbert space over the complex numbers
 class VectorSpace h => HilbertSpace h where

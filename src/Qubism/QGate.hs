@@ -41,7 +41,12 @@ import Qubism.QReg
 
 newtype QGate (n :: Nat) = 
   UnsafeMkQGate (LA.Matrix C) -- must be a (2^n) x (2^n) unitary matrix
-  deriving (Show, Eq)
+  deriving (Show)
+
+-- | "Close enough" equality testing
+instance Eq (QGate n) where
+  (UnsafeMkQGate a) == (UnsafeMkQGate b) =
+    LA.norm_2 (a - b) < 0.000001
 
 instance KnownNat n => Monoid (QGate n) where
   mempty = ident
@@ -51,7 +56,7 @@ instance KnownNat n => VectorSpace (QGate n) where
   zero = UnsafeMkQGate . (l><l) $ repeat 0 where l = internalLen (sing :: Sing n)
   z                 .: (UnsafeMkQGate b) = UnsafeMkQGate $ LA.scalar z * b
   (UnsafeMkQGate a) +: (UnsafeMkQGate b) = UnsafeMkQGate $ a + b
-  (UnsafeMkQGate a) -: (UnsafeMkQGate b) = UnsafeMkQGate $ a - b
+  neg (UnsafeMkQGate a) = UnsafeMkQGate $ -a
 
 instance KnownNat n => Algebra (QGate n) where
   one  = ident
