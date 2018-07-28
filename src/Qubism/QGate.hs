@@ -59,7 +59,6 @@ instance KnownNat n => VectorSpace (QGate n) where
   neg (UnsafeMkQGate a) = UnsafeMkQGate $ -a
 
 instance KnownNat n => Algebra (QGate n) where
-  one  = ident
   (*:) = (<>)
 
 internalLen :: (KnownNat n, Num a) => Sing n -> a
