@@ -14,7 +14,8 @@ import           Control.Monad.Trans.State
 import qualified Numeric.LinearAlgebra as LA
 import           Data.Complex
 
-import           Qubism.QReg
+import Qubism.AlgebraTests
+import Qubism.QReg
 
 genC :: Gen (Complex Double)
 genC = do
@@ -25,6 +26,11 @@ genC = do
 genQReg :: forall n . KnownNat n => Gen (QReg n)
 genQReg = normalize . UnsafeMkQReg . LA.fromList <$> vectorOf l genC
   where l = (2 ^) . fromIntegral . fromSing $ (sing :: Sing n)
+
+-- | I know, it's an orphan instance, but it's not relevant outside of this 
+-- test suite, and never should be.
+instance KnownNat n => Arbitrary (QReg n) where
+  arbitrary = genQReg
 
 propIdempotent
   :: (Eq a, Show a, Eq b, Show b)
@@ -39,15 +45,18 @@ propIdempotent st a = do
 
 spec :: Spec
 spec = do
-  describe "measure" $ 
-    it "is idempotent"
-      $ property
-      $ monadicIO
-      $ forAllM (genQReg :: Gen (QReg 1)) --TODO tests for larger QRegs
-      $ propIdempotent measure
-  describe "measureQubit" $ 
-    it "is idempotent"
-      $ property
-      $ monadicIO
-      $ forAllM (genQReg :: Gen (QReg 1))
-      $ propIdempotent (measureQubit 0)
+  describe "Quantum Registers" $ do
+    describe "form a vector space"  $ isVectorSpace  (T :: T (QReg 1))
+    describe "form a hilbert space" $ isHilbertSpace (T :: T (QReg 1))
+    describe "measure" $ 
+      it "is idempotent"
+        $ property
+        $ monadicIO
+        $ forAllM (genQReg :: Gen (QReg 1)) 
+        $ propIdempotent measure
+    describe "measureQubit" $ 
+      it "is idempotent"
+        $ property
+        $ monadicIO
+        $ forAllM (genQReg :: Gen (QReg 1))
+        $ propIdempotent (measureQubit 0)

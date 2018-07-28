@@ -28,6 +28,7 @@ dependencies:
 - vector
 - hspec
 - QuickCheck
+- quickcheck-properties
 
 library:
   source-dirs: src

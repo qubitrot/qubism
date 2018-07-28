@@ -45,13 +45,13 @@ instance Eq (QReg n) where
      LA.norm_2 (zs - ws) < 0.000001
 
 instance KnownNat n => VectorSpace (QReg n) where
-  zero = UnsafeMkQReg $ internalLen (sing :: Sing n) |> repeat 0 
+  zero = UnsafeMkQReg $ internalLen (sing :: Sing n) |> repeat 0
   z                .: (UnsafeMkQReg a) = UnsafeMkQReg $ LA.scalar z * a
   (UnsafeMkQReg a) +: (UnsafeMkQReg b) = UnsafeMkQReg $ a + b
   neg (UnsafeMkQReg a) = UnsafeMkQReg $ -a
 
 instance KnownNat n => HilbertSpace (QReg n) where
-  (UnsafeMkQReg zs) <.> (UnsafeMkQReg ws) = LA.conj zs LA.<.> ws
+  (UnsafeMkQReg zs) <.> (UnsafeMkQReg ws) = zs LA.<.> ws
 
 instance Show (QReg n) where
   show (UnsafeMkQReg zs) = foldl show' "" $ LA.toList zs
