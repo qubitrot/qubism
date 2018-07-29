@@ -1,49 +1,58 @@
-module Qubism.QASM.Types 
-  ( module Qubism.QASM.Types
-  , module Numeric.Natural
-  ) where
+{-|
+Module      : Qubism.QASM.Types
+Description : Defines an AST for OpenQASM 2.0
+Copyright   : (c) Keith Pearson, 2018
+License     : MIT
+Maintainer  : keith@qubitrot.org
+-}
+
+module Qubism.QASM.Types where
 
 import Numeric.Natural
 
-type Ident   = String
+type Id      = String
 type Size    = Natural
 type Index   = Natural
 type Program = [Stmt]
 
-newtype RegIdent   = RegIdent   Ident  deriving (Eq, Show)
-newtype GateIdent  = GateIdent  Ident  deriving (Eq, Show)
-newtype ParamIdent = ParamIdent Ident  deriving (Eq, Show)
-newtype ArgIdent   = ArgIdent   Ident  deriving (Eq, Show)
-
-data Stmt 
-  = RegDef  RegIdent RegType Size
-  | GateDef GateIdent [ParamIdent] [ArgIdent] [GateBody]
-  | Measure Reg Reg
-  | Reset   Reg
-  | Barrier [Reg]
-  | Apply   Gate [RegIdent]
+data Stmt
+  = QRegDecl Id Size
+  | CRegDecl Id Size
+  | GateDecl 
+      Id   -- ^ Name
+      [Id] -- ^ Parameters
+      [Id] -- ^ Arguments
+      [UnitaryOp]
+  | QOp QuantumOp
+  | UOp UnitaryOp
+  | Cond Id Natural QuantumOp
   deriving (Eq, Show)
 
-data Reg = Reg RegIdent (Maybe Index)
+data QuantumOp
+  = Measure Arg Arg -- ^ source, target
+  | Reset   Arg
   deriving (Eq, Show)
 
-data RegType = CR | QR
+data UnitaryOp
+  = U    [Expr] Arg
+  | CX   Arg Arg
+  | Func Id [Expr] [Arg]
+  | Barrier [Arg] -- ^ Not a unitary op, but it's a convenient spot
   deriving (Eq, Show)
 
-data GateBody 
-  = GBApply Gate [ArgIdent]
-  | GBBarrier [ArgIdent]
+data Arg
+  = ArgQubit Id Index
+  | ArgReg   Id
   deriving (Eq, Show)
 
-data Gate 
-  = CX
-  | U Param Param Param
-  | Func GateIdent [Param]
+data Expr 
+  = Pi
+  | Ident Id 
+  | Real Double
+  | Binary BinaryOp Expr Expr
+  | Unary  UnaryOp  Expr
   deriving (Eq, Show)
 
-data Param 
-  = Number Double 
-  | Name ParamIdent
-  deriving (Eq, Show)
-
+data BinaryOp = Add | Sub | Mul | Div | Pow              deriving (Eq, Show)
+data UnaryOp  = Neg | Sin | Cos | Tan | Exp | Ln | Sqrt  deriving (Eq, Show)
 

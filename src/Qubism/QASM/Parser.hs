@@ -1,9 +1,19 @@
+{-|
+Module      : Qubism.QASM.Parser
+Description : A Parser for OpenQASM 2.0
+Copyright   : (c) Keith Pearson, 2018
+License     : MIT
+Maintainer  : keith@qubitrot.org
+-}
+
 module Qubism.QASM.Parser where
 
 import Control.Monad
 import Data.Void
+import Numeric.Natural
 import           Text.Megaparsec
 import           Text.Megaparsec.Char
+import           Text.Megaparsec.Expr
 import qualified Text.Megaparsec.Char.Lexer as L
 
 import Qubism.QASM.Types
@@ -15,8 +25,8 @@ type Parser = Parsec Void String
 sc :: Parser ()
 sc = L.space space1 lineCmnt blockCmnt
   where lineCmnt  = L.skipLineComment  "//"
-        blockCmnt = L.skipBlockComment "/*" "*/"
-
+        blockCmnt = L.skipBlockComment "/*" "*/" -- Not actually part of the
+                                                 -- standard, but why not?
 lexeme :: Parser a -> Parser a
 lexeme = L.lexeme sc
 
@@ -32,8 +42,9 @@ comma = symbol ","
 natural :: Parser Natural
 natural = lexeme L.decimal
 
-float :: RealFloat a => Parser a
-float = lexeme L.float
+double :: RealFloat a => Parser a
+double =  try (lexeme L.float) 
+      <|> fromIntegral <$> natural
 
 identifier :: Parser String
 identifier = lexeme . try $ (:) <$> letterChar <*> many alphaNumChar
@@ -50,66 +61,120 @@ curly = between (symbol "{") (symbol "}")
 list :: Parser a -> Parser [a]
 list p = sepEndBy p comma
 
+nonempty :: Parser a -> Parser [a]
+nonempty p = sepEndBy1 p comma
+
 ---------- Parsing --------------------------------------
 
-parseQASM :: Parser Program
-parseQASM = header *> program
+mainprogram :: Parser Program
+mainprogram = header *> program
 
 header :: Parser ()
-header = sc *> symbol "OPENQASM" *> float *> semi *> pure ()
+header = sc *> symbol "OPENQASM 2.0;" *> pure ()
 
 program :: Parser Program
 program = sepEndBy1 stmt semi
 
 stmt :: Parser Stmt
-stmt =  regDef
-    <|> gateDef
+stmt =  regDecl 
+    <|> gateDecl
+    <|> QOp <$> qop
+    <|> UOp <$> uop
+    <|> cond
 
-regDef :: Parser Stmt
-regDef = do
-  t    <- symbol "qreg" <|> symbol "creg"
-  name <- RegIdent <$> identifier
-  size <- brackets natural
-  let t' = if t == "qreg" then QR else CR
-  pure $ RegDef name t' size
+regDecl :: Parser Stmt
+regDecl = do
+  prefix <- symbol "qreg" <|> symbol "creg"
+  ident  <- identifier
+  size   <- brackets natural
+  case prefix of
+    "qreg" -> pure $ QRegDecl ident size
+    "creg" -> pure $ CRegDecl ident size
 
-gateDef :: Parser Stmt
-gateDef = do
-  symbol "gate" 
-  name   <- GateIdent <$> identifier
-  params <- parens $ list (ParamIdent <$> identifier)
-  args   <- list (ArgIdent <$> identifier)
-  body   <- curly $ sepEndBy gateBody semi
-  pure $ GateDef name params args body
+gateDecl :: Parser Stmt
+gateDecl = do
+  symbol "gate"
+  ident  <- identifier
+  params <- parens $ list identifier
+  args   <- nonempty identifier
+  body   <- curly $ many (uop <* semi)
+  pure $ GateDecl ident params args body
 
-gateBody :: Parser GateBody
-gateBody = gbApply <|> gbBarrier
+qop :: Parser QuantumOp
+qop = measure <|> reset
   where 
-    gbApply = do
-      g    <- gate
-      args <- list (ArgIdent <$> identifier)
-      pure $ GBApply g args
-    gbBarrier = do
-      symbol "barrier"
-      args <- list (ArgIdent <$> identifier)
-      pure $ GBBarrier args
+    measure = do
+      symbol "measure"
+      source <- argument
+      symbol "->"
+      target <- argument
+      pure $ Measure source target
+    reset = do
+      symbol "reset"
+      target <- argument
+      pure $ Reset target
 
-gate :: Parser Gate
-gate = cx <|> u <|> func
+uop :: Parser UnitaryOp
+uop = u <|> cx <|> func <|> barrier
   where
-    cx = symbol "CX" *> pure CX
-    u  = do
-      symbol "U"  *> symbol "("
-      p1 <- param <* comma
-      p2 <- param <* comma
-      p3 <- param <* symbol ")"
-      pure $ U p1 p2 p3
+    u = do
+      symbol "U"
+      params <- parens $ list expr
+      arg    <- argument
+      pure $ U params arg
+    cx = do
+      symbol "CX"
+      arg1 <- argument
+      comma
+      arg2 <- argument
+      pure $ CX arg1 arg2
     func = do
-      ident  <- GateIdent <$> identifier
-      params <- parens $ list param
-      pure $ Func ident params
+      ident  <- identifier
+      params <- parens $ list expr
+      args   <- list argument
+      pure $ Func ident params args
+    barrier = do
+      symbol "barrier"
+      args <- list argument
+      pure $ Barrier args
 
-param :: Parser Param
-param = (Number <$> num)  <|> (Name <$> name)
-  where num  = try float  <|> (fromIntegral <$> natural)
-        name = ParamIdent <$> identifier
+cond :: Parser Stmt
+cond = do
+  symbol "if" *> symbol "("
+  ident <- identifier
+  symbol "=="
+  num <- natural
+  symbol ")"
+  op  <- qop
+  pure $ Cond ident num op
+
+argument :: Parser Arg
+argument = do
+  ident <- identifier
+  index <- optional $ brackets natural
+  case index of
+    Nothing -> pure $ ArgReg   ident
+    Just i  -> pure $ ArgQubit ident i
+
+expr :: Parser Expr
+expr = makeExprParser term exprOps
+  where term =  symbol "pi" *> pure Pi
+            <|> Ident <$> identifier 
+            <|> Real  <$> double
+
+exprOps :: [[Operator Parser Expr]]
+exprOps = 
+  [ [ Prefix (Unary  Neg  <$ symbol "-"   ) ]
+  , [ Prefix (Unary  Sin  <$ symbol "sin" )
+    , Prefix (Unary  Cos  <$ symbol "cos" )
+    , Prefix (Unary  Tan  <$ symbol "tan" )
+    , Prefix (Unary  Exp  <$ symbol "exp" )
+    , Prefix (Unary  Ln   <$ symbol "ln"  )
+    , Prefix (Unary  Sqrt <$ symbol "sqrt") ]
+  , [ InfixL (Binary Pow  <$ symbol "pow" ) ]
+  , [ InfixL (Binary Mul  <$ symbol "*"   )
+    , InfixL (Binary Div  <$ symbol "/"   ) ]
+  , [ InfixL (Binary Add  <$ symbol "+"   )
+    , InfixL (Binary Sub  <$ symbol "-"   ) ]
+  ]
+
