@@ -32,6 +32,9 @@ comma = symbol ","
 natural :: Parser Natural
 natural = lexeme L.decimal
 
+float :: RealFloat a => Parser a
+float = lexeme L.float
+
 identifier :: Parser String
 identifier = lexeme . try $ (:) <$> letterChar <*> many alphaNumChar
 
@@ -44,90 +47,69 @@ brackets = between (symbol "[") (symbol "]")
 curly :: Parser a -> Parser a
 curly = between (symbol "{") (symbol "}")
 
+list :: Parser a -> Parser [a]
+list p = sepEndBy p comma
+
 ---------- Parsing --------------------------------------
+
+parseQASM :: Parser Program
+parseQASM = header *> program
+
+header :: Parser ()
+header = sc *> symbol "OPENQASM" *> float *> semi *> pure ()
 
 program :: Parser Program
 program = sepEndBy1 stmt semi
 
 stmt :: Parser Stmt
-stmt =  declReg 
-    <|> declGate
-    <|> measure 
-    <|> reset
-    <|> (Operation <$> operation)
+stmt =  regDef
+    <|> gateDef
 
-declReg :: Parser Stmt
-declReg = do
-  regt  <- symbol "creg" <|> symbol "qreg" 
-  ident <- identifier 
-  size  <- brackets natural
-  let t = if regt == "creg" then CR else QR
-  pure $ DeclReg ident t size 
+regDef :: Parser Stmt
+regDef = do
+  t    <- symbol "qreg" <|> symbol "creg"
+  name <- RegIdent <$> identifier
+  size <- brackets natural
+  let t' = if t == "qreg" then QR else CR
+  pure $ RegDef name t' size
 
-declGate :: Parser Stmt
-declGate = do
-  symbol "gate"
-  ident  <- identifier
-  params <- parens $ sepBy identifier comma
-  args   <- sepBy1 identifier comma
-  body   <- curly $ sepEndBy operation semi
-  pure $ DeclGate ident params args body
+gateDef :: Parser Stmt
+gateDef = do
+  symbol "gate" 
+  name   <- GateIdent <$> identifier
+  params <- parens $ list (ParamIdent <$> identifier)
+  args   <- list (ArgIdent <$> identifier)
+  body   <- curly $ sepEndBy gateBody semi
+  pure $ GateDef name params args body
 
-measure :: Parser Stmt
-measure = do
-  symbol "measure"
-  source <- argument
-  symbol "->"
-  target <- argument
-  pure $ Measure source target
+gateBody :: Parser GateBody
+gateBody = gbApply <|> gbBarrier
+  where 
+    gbApply = do
+      g    <- gate
+      args <- list (ArgIdent <$> identifier)
+      pure $ GBApply g args
+    gbBarrier = do
+      symbol "barrier"
+      args <- list (ArgIdent <$> identifier)
+      pure $ GBBarrier args
 
-reset :: Parser Stmt
-reset = do
-  symbol "reset"
-  arg <- argument
-  pure $ Reset arg
-
-operation :: Parser Op
-operation = gate <|> barrier
-
-gate :: Parser Op
-gate = do
-  g    <- u <|> cx <|> custom
-  args <- argument `sepBy1` comma
-  pure $ Apply g args
-
-u :: Parser Gate
-u = do
-  symbol "U"
-  symbol "("
-  p1 <- param <* comma
-  p2 <- param <* comma
-  p3 <- param
-  symbol ")"
-  pure $ U p1 p2 p3
-
-cx :: Parser Gate
-cx = do
-  symbol "CX"
-  pure CX
-
-custom :: Parser Gate
-custom = do
-  ident  <- identifier
-  params <- parens $ param `sepBy` comma
-  pure $ Custom ident params
-
-barrier :: Parser Op
-barrier = do
-  symbol "barrier"
-  args <- argument `sepBy` comma
-  pure $ Barrier args
-
-argument :: Parser Arg
-argument = do
-  ident <- identifier
-  index <- option Nothing $ Just <$> brackets natural
-  pure $ Arg ident index
+gate :: Parser Gate
+gate = cx <|> u <|> func
+  where
+    cx = symbol "CX" *> pure CX
+    u  = do
+      symbol "U"  *> symbol "("
+      p1 <- param <* comma
+      p2 <- param <* comma
+      p3 <- param <* symbol ")"
+      pure $ U p1 p2 p3
+    func = do
+      ident  <- GateIdent <$> identifier
+      params <- parens $ list param
+      pure $ Func ident params
 
 param :: Parser Param
-param = try (lexeme L.float) <|> (fromIntegral <$> natural)
+param = (Number <$> num)  <|> (Name <$> name)
+  where num  = try float  <|> (fromIntegral <$> natural)
+        name = ParamIdent <$> identifier
