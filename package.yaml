@@ -29,6 +29,8 @@ dependencies:
 - hspec
 - QuickCheck
 - quickcheck-properties
+- megaparsec
+- text
 
 library:
   source-dirs: src
