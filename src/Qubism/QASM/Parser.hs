@@ -95,7 +95,7 @@ gateDecl :: Parser Stmt
 gateDecl = do
   symbol "gate"
   ident  <- identifier
-  params <- parens $ list identifier
+  params <- option [] $ parens (list identifier)
   args   <- nonempty identifier
   body   <- curly $ many (uop <* semi)
   pure $ GateDecl ident params args body
