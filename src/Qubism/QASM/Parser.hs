@@ -73,7 +73,7 @@ header :: Parser ()
 header = sc *> symbol "OPENQASM 2.0;" *> pure ()
 
 program :: Parser Program
-program = sepEndBy1 stmt semi
+program = sepEndBy1 stmt (semi <|> symbol "}")
 
 stmt :: Parser Stmt
 stmt =  regDecl 
@@ -97,7 +97,7 @@ gateDecl = do
   ident  <- identifier
   params <- option [] $ parens (list identifier)
   args   <- nonempty identifier
-  body   <- curly $ many (uop <* semi)
+  body   <- symbol "{" *> many (uop <* semi)
   pure $ GateDecl ident params args body
 
 qop :: Parser QuantumOp
