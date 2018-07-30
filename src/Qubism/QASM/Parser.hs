@@ -161,6 +161,7 @@ expr = makeExprParser term exprOps
   where term =  symbol "pi" *> pure Pi
             <|> Ident <$> identifier 
             <|> Real  <$> double
+            <|> parens expr
 
 exprOps :: [[Operator Parser Expr]]
 exprOps = 
