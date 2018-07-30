@@ -130,7 +130,7 @@ uop = u <|> cx <|> func <|> barrier
       pure $ CX arg1 arg2
     func = do
       ident  <- identifier
-      params <- parens $ list expr
+      params <- option [] $ parens (list expr)
       args   <- list argument
       pure $ Func ident params args
     barrier = do
