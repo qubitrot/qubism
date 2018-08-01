@@ -20,6 +20,8 @@ module Qubism.QGate
   , pauliZ
   , hadamard
   , unitary
+  , cnot
+  , controlled
   , kronecker
   , onJust
   , onEvery
@@ -106,6 +108,20 @@ unitary theta phi lambda = UnsafeMkQGate $
         c =  cis (phi-lambda/2) * ( sin (theta/2) :+ 0 )
         d =  cis (phi+lambda/2) * ( cos (theta/2) :+ 0 )
 
+-- | Controlled not between control and target qubits
+cnot :: KnownNat n => Finite n -> Finite n -> QGate n
+cnot c t = controlled c . onJust t $ pauliX
+
+-- | Transform an arbitrary QGate into a controled one depending on qubit i
+controlled :: forall n . KnownNat n => Finite n -> QGate n -> QGate n
+controlled finite (UnsafeMkQGate m) = 
+  UnsafeMkQGate $ (m <> projection) + LA.ident (2^n) - projection
+  where 
+    projection = LA.diag $ (2^n) LA.|> fmap f [0..]
+    f j = fromIntegral $ j `quot` 2^(n-i-1) `mod` 2
+    n   = fromIntegral $ fromSing (sing :: Sing n)
+    i   = fromIntegral $ getFinite finite
+
 -- | The tensor product of a QGate's A and B is a QGate that acts as A on the 
 -- first n qubits and B on the rest. In the computational basis this is simply
 -- the kronecker product of matricies.
@@ -115,8 +131,8 @@ kronecker (UnsafeMkQGate a) (UnsafeMkQGate b) =
 
 -- | Promote a 1-qubit gate to an n-qubit gate with the original gate acting 
 -- on qubit i. Other qubits are unaffected.
-onJust :: forall n . KnownNat n => QGate 1 -> Finite n  -> QGate n
-onJust (UnsafeMkQGate m) i = UnsafeMkQGate $  -- it should be possible to do
+onJust :: forall n . KnownNat n => Finite n -> QGate 1 -> QGate n
+onJust i (UnsafeMkQGate m) = UnsafeMkQGate $  -- it should be possible to do
   pre `LA.kronecker` m `LA.kronecker` post    -- this with just QGate's 
   where pre  = LA.ident $ 2^j                 -- kronecker, but I can't get
         post = LA.ident $ 2^(n-j-1)           -- the types to check.
