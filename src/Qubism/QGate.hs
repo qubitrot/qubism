@@ -48,9 +48,11 @@ instance Eq (QGate n) where
   (UnsafeMkQGate a) == (UnsafeMkQGate b) =
     LA.norm_2 (a - b) < 0.000001
 
+instance KnownNat n => Semigroup (QGate n) where
+  (UnsafeMkQGate a) <> (UnsafeMkQGate b) = UnsafeMkQGate $ b LA.<> a
+
 instance KnownNat n => Monoid (QGate n) where
   mempty = ident
-  mappend (UnsafeMkQGate a) (UnsafeMkQGate b) = UnsafeMkQGate $ a LA.<> b
 
 instance KnownNat n => VectorSpace (QGate n) where
   zero = UnsafeMkQGate . (l><l) $ repeat 0 where l = internalLen (sing :: Sing n)
@@ -59,7 +61,7 @@ instance KnownNat n => VectorSpace (QGate n) where
   neg (UnsafeMkQGate a) = UnsafeMkQGate $ -a
 
 instance KnownNat n => Algebra (QGate n) where
-  (*:) = (<>)
+  (*:) = flip (<>)
 
 internalLen :: (KnownNat n, Num a) => Sing n -> a
 internalLen = (2 ^) . fromIntegral . fromSing 

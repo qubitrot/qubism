@@ -28,7 +28,6 @@ dependencies:
 - vector
 - hspec
 - QuickCheck
-- quickcheck-properties
 - megaparsec
 - text
 
