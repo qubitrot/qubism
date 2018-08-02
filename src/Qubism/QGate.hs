@@ -14,6 +14,7 @@ Maintainer  : keith@qubitrot.org
 module Qubism.QGate 
   ( QGate
   , (#>)
+  , gate
   , ident
   , pauliX
   , pauliY
@@ -35,11 +36,13 @@ import Data.Finite
 
 import           Data.Complex
 import           Data.Monoid
+import           Control.Monad.Trans.State
 import           Numeric.LinearAlgebra ((><))
 import qualified Numeric.LinearAlgebra as LA
 
 import Qubism.Algebra
 import Qubism.QReg
+import Qubism.CReg
 
 newtype QGate (n :: Nat) = 
   UnsafeMkQGate (LA.Matrix C) -- must be a (2^n) x (2^n) unitary matrix
@@ -51,7 +54,7 @@ instance Eq (QGate n) where
     LA.norm_2 (a - b) < 0.000001
 
 instance KnownNat n => Semigroup (QGate n) where
-  (UnsafeMkQGate a) <> (UnsafeMkQGate b) = UnsafeMkQGate $ b LA.<> a
+  (UnsafeMkQGate a) <> (UnsafeMkQGate b) = UnsafeMkQGate $ a LA.<> b
 
 instance KnownNat n => Monoid (QGate n) where
   mempty = ident
@@ -63,7 +66,7 @@ instance KnownNat n => VectorSpace (QGate n) where
   neg (UnsafeMkQGate a) = UnsafeMkQGate $ -a
 
 instance KnownNat n => Algebra (QGate n) where
-  (*:) = flip (<>)
+  (*:) = (<>)
 
 internalLen :: (KnownNat n, Num a) => Sing n -> a
 internalLen = (2 ^) . fromIntegral . fromSing 
@@ -73,6 +76,10 @@ internalLen = (2 ^) . fromIntegral . fromSing
 infixr 5 #>
 (#>) :: QGate n -> QReg n -> QReg n
 (#>) (UnsafeMkQGate m) (UnsafeMkQReg v) = UnsafeMkQReg $ m LA.#> v
+
+-- | Helper function to make state computations nicer
+gate :: Monad m => QGate n -> StateT (QReg n) m ()
+gate g = state $ \qr -> ((), g #> qr)
 
 ident :: forall n . KnownNat n => QGate n
 ident = UnsafeMkQGate . LA.ident $ internalLen (sing :: Sing n)
@@ -121,6 +128,11 @@ controlled finite (UnsafeMkQGate m) =
     f j = fromIntegral $ j `quot` 2^(n-i-1) `mod` 2
     n   = fromIntegral $ fromSing (sing :: Sing n)
     i   = fromIntegral $ getFinite finite
+
+-- | If the given Bit is One then apply the gate, otherwise
+--  do nothing
+ifBit :: KnownNat n => Bit -> QGate n -> QGate n
+ifBit b g = if (b == One) then g else ident
 
 -- | The tensor product of a QGate's A and B is a QGate that acts as A on the 
 -- first n qubits and B on the rest. In the computational basis this is simply
