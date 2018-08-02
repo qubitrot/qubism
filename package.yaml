@@ -46,6 +46,16 @@ executables:
     dependencies:
     - qubism
 
+  examples:
+    main: Teleportation.hs
+    source-dirs: examples
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - qubism
+
 tests:
   qubism-test:
     main:                Spec.hs
