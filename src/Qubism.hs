@@ -11,7 +11,6 @@ import Qubism.QReg
 import Qubism.CReg
 import Qubism.QGate
 
-import GHC.TypeLits
 import Data.Singletons
 import Data.Singletons.TypeLits
 import Data.Finite
