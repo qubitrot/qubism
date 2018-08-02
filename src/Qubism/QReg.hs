@@ -53,9 +53,13 @@ instance KnownNat n => VectorSpace (QReg n) where
 instance KnownNat n => HilbertSpace (QReg n) where
   (UnsafeMkQReg zs) <.> (UnsafeMkQReg ws) = zs LA.<.> ws
 
-instance Show (QReg n) where
-  show (UnsafeMkQReg zs) = foldl show' "" $ LA.toList zs
-    where show' str z = str ++ show z ++ "\n"
+instance KnownNat n => Show (QReg n) where
+  show (UnsafeMkQReg zs) = foldl show' "" $ zip [0..] (LA.toList zs)
+    where show' str (i,z) = str ++ show z ++ "\t" ++ basis i ++ "\n"
+          basis i = let bit j = if i `quot` 2^(n-j-1) `mod` 2 == 0
+                                then '0' else '1'
+                    in  "|" ++ fmap bit (take n [0..]) ++ ">"
+          n = fromIntegral $ fromSing (sing :: Sing n)
 
 internalLen :: (KnownNat n, Num a) => Sing n -> a
 internalLen = (2 ^) . fromIntegral . fromSing 
