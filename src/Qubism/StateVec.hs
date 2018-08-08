@@ -46,7 +46,7 @@ instance Eq (StateVec n) where
 
 instance KnownNat n => VectorSpace (StateVec n) where
   zero = UnsafeMkStateVec $ internalLen (sing :: Sing n) |> repeat 0
-  z                .: (UnsafeMkStateVec a) = UnsafeMkStateVec $ LA.scalar z * a
+  z .: (UnsafeMkStateVec a) = UnsafeMkStateVec $ LA.scalar z * a
   (UnsafeMkStateVec a) +: (UnsafeMkStateVec b) = UnsafeMkStateVec $ a + b
   neg (UnsafeMkStateVec a) = UnsafeMkStateVec $ -a
 

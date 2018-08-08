@@ -16,7 +16,7 @@ teleport1
   :: MonadRandom m
   => StateVec 1     -- ^ Alice's qubit
   -> m (StateVec 3) -- ^ Resulting total state. Alice's state is teleported 
-                -- to qubit 3 (indexed 2).
+                    -- to qubit 3 (indexed 2).
 teleport1 a = do
   let pair  = cnot 0 1 <> onJust 0 hadamard #> mkStateVec :: StateVec 2 
   let total = a `tensor` pair              
