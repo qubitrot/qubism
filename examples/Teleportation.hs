@@ -14,11 +14,11 @@ import Qubism
 -- | Quantum teleportation of one bit
 teleport1
   :: MonadRandom m
-  => QReg 1     -- ^ Alice's qubit
-  -> m (QReg 3) -- ^ Resulting total state. Alice's state is teleported 
+  => StateVec 1     -- ^ Alice's qubit
+  -> m (StateVec 3) -- ^ Resulting total state. Alice's state is teleported 
                 -- to qubit 3 (indexed 2).
 teleport1 a = do
-  let pair  = cnot 0 1 <> onJust 0 hadamard #> mkQReg :: QReg 2 
+  let pair  = cnot 0 1 <> onJust 0 hadamard #> mkStateVec :: StateVec 2 
   let total = a `tensor` pair              
   flip execStateT total $ do
     gate $ cnot 0 1

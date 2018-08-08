@@ -26,6 +26,7 @@ dependencies:
 - MonadRandom
 - hmatrix
 - vector
+- containers
 - hspec
 - QuickCheck
 - quickcheck-properties

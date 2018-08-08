@@ -23,6 +23,7 @@ module Qubism.QGate
   , unitary
   , cnot
   , controlled
+  , ifBit
   , kronecker
   , onJust
   , onEvery
@@ -41,7 +42,7 @@ import           Numeric.LinearAlgebra ((><))
 import qualified Numeric.LinearAlgebra as LA
 
 import Qubism.Algebra
-import Qubism.QReg
+import Qubism.StateVec
 import Qubism.CReg
 
 newtype QGate (n :: Nat) = 
@@ -74,11 +75,11 @@ internalLen = (2 ^) . fromIntegral . fromSing
 -- | Apply a quantum gate to a quantum register. Note that this
 -- operator conflicts with the one from Numeric.LinearAlgebra.
 infixr 5 #>
-(#>) :: QGate n -> QReg n -> QReg n
-(#>) (UnsafeMkQGate m) (UnsafeMkQReg v) = UnsafeMkQReg $ m LA.#> v
+(#>) :: QGate n -> StateVec n -> StateVec n
+(#>) (UnsafeMkQGate m) (UnsafeMkStateVec v) = UnsafeMkStateVec $ m LA.#> v
 
 -- | Helper function to make state computations nicer
-gate :: Monad m => QGate n -> StateT (QReg n) m ()
+gate :: Monad m => QGate n -> StateT (StateVec n) m ()
 gate g = state $ \qr -> ((), g #> qr)
 
 ident :: forall n . KnownNat n => QGate n

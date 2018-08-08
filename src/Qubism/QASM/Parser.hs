@@ -88,7 +88,7 @@ regDecl = do
   ident  <- identifier
   size   <- brackets natural
   case prefix of
-    "qreg" -> pure $ QRegDecl ident size
+    "qreg" -> pure $ StateVecDecl ident size
     "creg" -> pure $ CRegDecl ident size
 
 gateDecl :: Parser Stmt

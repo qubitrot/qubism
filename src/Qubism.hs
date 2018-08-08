@@ -1,5 +1,5 @@
 module Qubism 
-  ( module Qubism.QReg
+  ( module Qubism.StateVec
   , module Qubism.CReg
   , module Qubism.QGate
   , module Data.Singletons
@@ -7,7 +7,7 @@ module Qubism
   , module Data.Finite
   ) where
 
-import Qubism.QReg
+import Qubism.StateVec
 import Qubism.CReg
 import Qubism.QGate
 

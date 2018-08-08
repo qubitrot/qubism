@@ -1,6 +1,6 @@
 {-|
-Module      : Qubism.QReg
-Description : Types and functions for quantum registers
+Module      : Qubism.StateVec
+Description : Types and functions for quantum state vectors
 Copyright   : (c) Keith Pearson, 2018
 License     : MIT
 Maintainer  : keith@qubitrot.org
@@ -11,9 +11,9 @@ Maintainer  : keith@qubitrot.org
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module Qubism.QReg
-  ( QReg (UnsafeMkQReg)
-  , mkQReg
+module Qubism.StateVec
+  ( StateVec (UnsafeMkStateVec)
+  , mkStateVec
   , mkQubit
   , normalize
   , tensor
@@ -36,25 +36,25 @@ import qualified Numeric.LinearAlgebra as LA
 import Qubism.Algebra
 import Qubism.CReg
 
-newtype QReg (n :: Nat) =
-  UnsafeMkQReg (LA.Vector C)
+newtype StateVec (n :: Nat) =
+  UnsafeMkStateVec (LA.Vector C)
 
 -- | To provide "close enough" equality testing.
-instance Eq (QReg n) where
-  UnsafeMkQReg zs == UnsafeMkQReg ws = 
+instance Eq (StateVec n) where
+  UnsafeMkStateVec zs == UnsafeMkStateVec ws = 
      LA.norm_2 (zs - ws) < 0.000001
 
-instance KnownNat n => VectorSpace (QReg n) where
-  zero = UnsafeMkQReg $ internalLen (sing :: Sing n) |> repeat 0
-  z                .: (UnsafeMkQReg a) = UnsafeMkQReg $ LA.scalar z * a
-  (UnsafeMkQReg a) +: (UnsafeMkQReg b) = UnsafeMkQReg $ a + b
-  neg (UnsafeMkQReg a) = UnsafeMkQReg $ -a
+instance KnownNat n => VectorSpace (StateVec n) where
+  zero = UnsafeMkStateVec $ internalLen (sing :: Sing n) |> repeat 0
+  z                .: (UnsafeMkStateVec a) = UnsafeMkStateVec $ LA.scalar z * a
+  (UnsafeMkStateVec a) +: (UnsafeMkStateVec b) = UnsafeMkStateVec $ a + b
+  neg (UnsafeMkStateVec a) = UnsafeMkStateVec $ -a
 
-instance KnownNat n => HilbertSpace (QReg n) where
-  (UnsafeMkQReg zs) <.> (UnsafeMkQReg ws) = zs LA.<.> ws
+instance KnownNat n => HilbertSpace (StateVec n) where
+  (UnsafeMkStateVec zs) <.> (UnsafeMkStateVec ws) = zs LA.<.> ws
 
-instance KnownNat n => Show (QReg n) where
-  show (UnsafeMkQReg zs) = foldl show' "" $ zip [0..] (LA.toList zs)
+instance KnownNat n => Show (StateVec n) where
+  show (UnsafeMkStateVec zs) = foldl show' "" $ zip [0..] (LA.toList zs)
     where show' str (i,z) = str ++ show z ++ "\t" ++ basis i ++ "\n"
           basis i = let bit j = if i `quot` 2^(n-j-1) `mod` 2 == 0
                                 then '0' else '1'
@@ -64,29 +64,31 @@ instance KnownNat n => Show (QReg n) where
 internalLen :: (KnownNat n, Num a) => Sing n -> a
 internalLen = (2 ^) . fromIntegral . fromSing 
 
--- | QReg's are intialized to |0>
-mkQReg :: forall n . KnownNat n => QReg n
-mkQReg = UnsafeMkQReg $ internalLen (sing :: Sing n) |> (1 : repeat 0) 
+-- | StateVec's are intialized to |0>
+mkStateVec :: forall n . KnownNat n => StateVec n
+mkStateVec = UnsafeMkStateVec $ internalLen (sing :: Sing n) |> (1 : repeat 0) 
 
--- | A qubit is just a QReg 1, initalized to |0>
-mkQubit :: QReg 1
-mkQubit = UnsafeMkQReg $ LA.fromList [1, 0]
+-- | A qubit is just a StateVec 1, initalized to |0>
+mkQubit :: StateVec 1
+mkQubit = UnsafeMkStateVec $ LA.fromList [1, 0]
 
-normalize :: QReg n -> QReg n
-normalize (UnsafeMkQReg zs) = UnsafeMkQReg $ LA.normalize zs
+normalize :: StateVec n -> StateVec n
+normalize (UnsafeMkStateVec zs) = UnsafeMkStateVec $ LA.normalize zs
 
-adjoint :: KnownNat n => QReg n -> (QReg n -> C)
+adjoint :: KnownNat n => StateVec n -> (StateVec n -> C)
 adjoint qr = (qr <.>)
 
 -- | The tensor product on elements of our Hilbert space
-tensor :: QReg n -> QReg m -> QReg (n + m)
-tensor (UnsafeMkQReg zs) (UnsafeMkQReg ws) =
-  UnsafeMkQReg $ LA.flatten (zs `LA.outer` ws)
+tensor :: StateVec n -> StateVec m -> StateVec (n + m)
+tensor (UnsafeMkStateVec zs) (UnsafeMkStateVec ws) =
+  UnsafeMkStateVec $ LA.flatten (zs `LA.outer` ws)
 
--- | Collapse a QReg to a state compatable with qubit <n> being measured <bit>.
+-- | Collapse a StateVec to a state compatable with qubit <n> being measured <bit>.
 -- Only occurs physically with measurement, so internal use only.
-collapse :: forall n . KnownNat n => Finite n -> Bit -> QReg n -> QReg n
-collapse i b (UnsafeMkQReg zs) = normalize . UnsafeMkQReg $ zs * mask
+collapse 
+  :: forall n . KnownNat n 
+  => Finite n -> Bit -> StateVec n -> StateVec n
+collapse i b (UnsafeMkStateVec zs) = normalize . UnsafeMkStateVec $ zs * mask
   where
     mask   = l |> altseq
     altseq = replicate m ifZero ++ replicate m ifOne ++ altseq
@@ -97,7 +99,9 @@ collapse i b (UnsafeMkQReg zs) = normalize . UnsafeMkQReg $ zs * mask
 
 -- | Preforms a measurement of an induvidual qubit (indexed Finite n) 
 -- in a quantum register.
-measureQubit :: (MonadRandom m, KnownNat n) => Finite n -> StateT (QReg n) m Bit
+measureQubit 
+  :: (MonadRandom m, KnownNat n) 
+  => Finite n -> StateT (StateVec n) m Bit
 measureQubit i = do
   qr <- get
   r  <- getRandomR (0, 1)
@@ -111,6 +115,7 @@ measureQubit i = do
 -- | Preform a measurement on all qubits in a quantum register, returning a 
 -- computational basis state.
 measure
-  :: forall m n . (MonadRandom m, KnownNat n) => StateT (QReg n) m (CReg n)
+  :: forall m n . (MonadRandom m, KnownNat n) 
+  => StateT (StateVec n) m (CReg n)
 measure = mkCReg <$> traverse measureQubit (take n [0 ..])
   where n = fromIntegral $ fromSing (sing :: Sing n)
