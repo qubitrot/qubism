@@ -16,7 +16,7 @@ type Index   = Natural
 type Program = [Stmt]
 
 data Stmt
-  = StateVecDecl Id Size
+  = QRegDecl Id Size
   | CRegDecl Id Size
   | GateDecl 
       Id   -- ^ Name
