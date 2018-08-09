@@ -14,6 +14,7 @@ Maintainer  : keith@qubitrot.org
 module Qubism.StateVec
   ( StateVec (UnsafeMkStateVec)
   , mkStateVec
+  , mkStateVec'
   , mkQubit
   , normalize
   , tensor
@@ -67,6 +68,12 @@ internalLen = (2 ^) . fromIntegral . fromSing
 -- | StateVec's are intialized to |0>
 mkStateVec :: forall n . KnownNat n => StateVec n
 mkStateVec = UnsafeMkStateVec $ internalLen (sing :: Sing n) |> (1 : repeat 0) 
+
+-- | Make a statevector with an explicity specified size.
+-- StateVec's are intialized to |0>
+mkStateVec' :: Sing n -> StateVec n
+mkStateVec' sn = UnsafeMkStateVec $ l |> (1 : repeat 0) 
+  where l = fromIntegral $ fromSing sn
 
 -- | A qubit is just a StateVec 1, initalized to |0>
 mkQubit :: StateVec 1
