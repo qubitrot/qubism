@@ -73,7 +73,7 @@ mkStateVec = UnsafeMkStateVec $ internalLen (sing :: Sing n) |> (1 : repeat 0)
 -- StateVec's are intialized to |0>
 mkStateVec' :: Sing n -> StateVec n
 mkStateVec' sn = UnsafeMkStateVec $ l |> (1 : repeat 0) 
-  where l = fromIntegral $ fromSing sn
+  where l = (2^) . fromIntegral $ fromSing sn
 
 -- | A qubit is just a StateVec 1, initalized to |0>
 mkQubit :: StateVec 1
