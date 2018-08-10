@@ -27,6 +27,7 @@ module Qubism.QGate
   , kronecker
   , onJust
   , onEvery
+  , onRange
   ) where
 
 -- For dependent typing
@@ -157,3 +158,8 @@ onJust i (UnsafeMkQGate m) = UnsafeMkQGate $  -- it should be possible to do
 onEvery :: forall n . KnownNat n => QGate 1 -> QGate n
 onEvery (UnsafeMkQGate m) = UnsafeMkQGate $ iterate (LA.kronecker m) m !! (n-1)
   where n = fromIntegral $ fromSing (sing :: Sing n)
+
+-- | Promote a 1-qubit gate to an n-qubit gate which acts on a range of
+-- qubits, leaving others untouched
+onRange :: forall n . KnownNat n => Finite n -> Finite n -> QGate 1 -> QGate n
+onRange f l m = mconcat $ map (\i -> onJust i m) [f..l]
