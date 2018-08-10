@@ -6,14 +6,8 @@ License     : MIT
 Maintainer  : keith@qubitrot.org
 -}
 
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
-
 module Qubism.CReg where
 
-import           GHC.TypeLits
-import           Data.Singletons
-import           Data.Singletons.TypeLits
 import qualified Data.Vector as V
 
 data Bit = Zero | One
@@ -23,11 +17,12 @@ instance Show Bit where
   show One  = "1"
   show Zero = "0"
 
-newtype CReg (n :: Nat) = CReg (V.Vector Bit)
+newtype CReg = CReg (V.Vector Bit)
   deriving Eq
 
-mkCReg :: [Bit] -> CReg n
+instance Show CReg where
+  show (CReg bs) = concatMap show bs
+
+mkCReg :: [Bit] -> CReg
 mkCReg = CReg . V.fromList
 
-instance Show (CReg n) where
-  show (CReg bs) = concatMap show bs

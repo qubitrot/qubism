@@ -46,7 +46,7 @@ instance Show SomeStateVec where
 data ProgState = ProgState
   { stVecs :: Map.Map Id SomeStateVec
   , qregs  :: Map.Map Id QReg
-  , cregs  :: Map.Map Id (CReg 1)
+  , cregs  :: Map.Map Id CReg
   }
 
 instance Show ProgState where

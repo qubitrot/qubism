@@ -123,6 +123,6 @@ measureQubit i = do
 -- computational basis state.
 measure
   :: forall m n . (MonadRandom m, KnownNat n) 
-  => StateT (StateVec n) m (CReg n)
+  => StateT (StateVec n) m CReg
 measure = mkCReg <$> traverse measureQubit (take n [0 ..])
   where n = fromIntegral $ fromSing (sing :: Sing n)
