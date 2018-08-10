@@ -34,7 +34,7 @@ data QuantumOp
   deriving (Eq, Show)
 
 data UnitaryOp
-  = U    [Expr] Arg
+  = U    Expr Expr Expr Arg
   | CX   Arg Arg
   | Func Id [Expr] [Arg]
   | Barrier [Arg] -- ^ Not a unitary op, but it's a convenient spot
@@ -44,6 +44,10 @@ data Arg
   = ArgQubit Id Index
   | ArgReg   Id
   deriving (Eq, Show)
+
+argId :: Arg -> Id
+argId (ArgQubit name _) = name
+argId (ArgReg   name  ) = name
 
 data Expr 
   = Pi

@@ -119,9 +119,12 @@ uop = u <|> cx <|> func <|> barrier
   where
     u = do
       symbol "U"
-      params <- parens $ list expr
-      arg    <- argument
-      pure $ U params arg
+      symbol "("
+      p1  <- expr <* symbol ","
+      p2  <- expr <* symbol ","
+      p3  <- expr <* symbol ")"
+      arg <- argument
+      pure $ U p1 p2 p3 arg
     cx = do
       symbol "CX"
       arg1 <- argument
