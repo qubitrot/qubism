@@ -73,7 +73,7 @@ runStmt (QRegDecl name size) = do
   addQReg     name size
   addStateVec name size
 runStmt (CRegDecl name size) =
-  lift . throwE $ RuntimeError "not yet implimented"
+  addCReg name size  
 runStmt (GateDecl name params args ops) = 
   lift . throwE $ RuntimeError "not yet implimented"
 runStmt (QOp op) = case op of
@@ -111,39 +111,41 @@ expr e = case e of
 (##>) :: Monad m => QGate 1 -> Arg -> ProgramM m ()
 (##>) g arg = do
   ps <- get
-  (QReg idSV i s) <- getQReg (argId arg)
+  (QReg idSV i s) <- findId (argId arg) $ (qregs ps)
   case Map.lookup idSV (stVecs ps) of   -- There should be a cleaner way to
     Just (SomeSV (sv :: StateVec n)) -> -- witness these types. TODO.
       let ix j = finite $ toInteger (j+i) :: Finite n
           sv'  = case arg of 
-                  (ArgQubit _ k) -> SomeSV $ onJust  (ix k)           g #> sv
-                  (ArgReg   _  ) -> SomeSV $ onRange (ix 0) (ix(s-1)) g #> sv
+                   (ArgQubit _ k) -> SomeSV $ onJust  (ix k)           g #> sv
+                   (ArgReg   _  ) -> SomeSV $ onRange (ix 0) (ix(s-1)) g #> sv
           svs' = Map.insert idSV sv' (stVecs ps)
       in  put $ ProgState svs' (qregs ps) (cregs ps)
     Nothing -> pure ()
 
-getQReg :: Monad m => Id -> ProgramM m QReg
-getQReg name = do
-  ps <- get
-  case Map.lookup name (qregs ps) of
-    Just qr -> pure qr
-    Nothing -> lift . throwE . RuntimeError $ "Undeclared identifier: " ++ name 
+findId :: Monad m => Id -> Map.Map Id v -> ProgramM m v
+findId name table =
+  case Map.lookup name table of
+    Just v  -> pure v
+    Nothing -> lift . throwE . RuntimeError 
+               $ "Undeclared identifier: " ++ name 
 
-addQReg :: Monad m => Id -> Natural -> ProgramM m ()
+addQReg :: Monad m => Id -> Size -> ProgramM m ()
 addQReg name size = do
   ps <- get
   checkNameConflict name (qregs ps)
-  addStateVec name size
-  let qrs  = qregs ps
-      qr   = QReg name 0 size
-      qrs' = Map.insert name qr qrs
+  let qr   = QReg name 0 size
+      qrs' = Map.insert name qr (qregs ps)
   put $ ProgState (stVecs ps) qrs' (cregs ps)
 
-getCReg :: Monad m => Arg -> ProgramM m QReg
-getCReg arg = undefined
-  
+addCReg :: Monad m => Id -> Size -> ProgramM m ()
+addCReg name size = do
+  ps <- get
+  checkNameConflict name (cregs ps)
+  let cr   = mkCReg $ replicate (fromIntegral size) Zero
+      crs' = Map.insert name cr (cregs ps)
+  put $ ProgState (stVecs ps) (qregs ps) crs'
 
-addStateVec :: Monad m => Id -> Natural -> ProgramM m ()
+addStateVec :: Monad m => Id -> Size -> ProgramM m ()
 addStateVec name size = do
   ps <- get
   checkNameConflict name (stVecs ps)
