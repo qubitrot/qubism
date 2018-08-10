@@ -111,7 +111,7 @@ expr e = case e of
 (##>) :: Monad m => QGate 1 -> Arg -> ProgramM m ()
 (##>) g arg = do
   ps <- get
-  (QReg idSV i s) <- getQReg arg
+  (QReg idSV i s) <- getQReg (argId arg)
   case Map.lookup idSV (stVecs ps) of   -- There should be a cleaner way to
     Just (SomeSV (sv :: StateVec n)) -> -- witness these types. TODO.
       let ix j = finite $ toInteger (j+i) :: Finite n
@@ -122,10 +122,9 @@ expr e = case e of
       in  put $ ProgState svs' (qregs ps) (cregs ps)
     Nothing -> pure ()
 
-getQReg :: Monad m => Arg -> ProgramM m QReg
-getQReg arg = do
+getQReg :: Monad m => Id -> ProgramM m QReg
+getQReg name = do
   ps <- get
-  let name = argId arg
   case Map.lookup name (qregs ps) of
     Just qr -> pure qr
     Nothing -> lift . throwE . RuntimeError $ "Undeclared identifier: " ++ name 
@@ -139,6 +138,10 @@ addQReg name size = do
       qr   = QReg name 0 size
       qrs' = Map.insert name qr qrs
   put $ ProgState (stVecs ps) qrs' (cregs ps)
+
+getCReg :: Monad m => Arg -> ProgramM m QReg
+getCReg arg = undefined
+  
 
 addStateVec :: Monad m => Id -> Natural -> ProgramM m ()
 addStateVec name size = do
