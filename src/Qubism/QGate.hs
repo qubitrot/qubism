@@ -38,7 +38,7 @@ import Data.Finite
 
 import           Data.Complex
 import           Data.Monoid
-import           Control.Monad.Trans.State
+import           Control.Monad.Trans.State.Strict
 import           Numeric.LinearAlgebra ((><))
 import qualified Numeric.LinearAlgebra as LA
 

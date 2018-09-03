@@ -29,7 +29,7 @@ import Data.Singletons.TypeLits
 import Data.Finite
 
 import           Control.Monad.Random
-import           Control.Monad.Trans.State
+import           Control.Monad.Trans.State.Strict
 import           Data.Complex
 import           Numeric.LinearAlgebra ((|>))
 import qualified Numeric.LinearAlgebra as LA

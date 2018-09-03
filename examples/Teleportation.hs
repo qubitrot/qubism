@@ -8,7 +8,7 @@ Maintainer  : keith@qubitrot.org
 {-# LANGUAGE DataKinds #-}
 
 import Control.Monad.Random
-import Control.Monad.Trans.State
+import Control.Monad.Trans.State.Strict
 import Qubism
 
 -- | Quantum teleportation of one bit
