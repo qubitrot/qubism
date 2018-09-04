@@ -3,8 +3,8 @@ module Main where
 import System.Environment
 import Text.Megaparsec
 
-import Qubism.QASM.Types
 import Qubism.QASM.Parser
+import Qubism.QASM.Simulation
 
 main :: IO ()
 main = do
@@ -12,4 +12,8 @@ main = do
   source <- readFile file
   case runParser mainprogram file source of
     Left  err  -> putStr $ parseErrorPretty' source err
-    Right prog -> print prog
+    Right prog -> do
+      st <- runProgram prog
+      case st of 
+        Left  error  -> print error
+        Right progSt -> print progSt

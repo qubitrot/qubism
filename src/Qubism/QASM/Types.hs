@@ -41,13 +41,13 @@ data UnitaryOp
   deriving (Eq, Show)
 
 data Arg
-  = ArgQubit Id Index
-  | ArgReg   Id
+  = ArgBit Id Index
+  | ArgReg Id
   deriving (Eq, Show)
 
 argId :: Arg -> Id
-argId (ArgQubit name _) = name
-argId (ArgReg   name  ) = name
+argId (ArgBit name _) = name
+argId (ArgReg name  ) = name
 
 data Expr 
   = Pi

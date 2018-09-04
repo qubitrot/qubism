@@ -9,6 +9,7 @@ Maintainer  : keith@qubitrot.org
 module Qubism.CReg where
 
 import qualified Data.Vector as V
+import           Numeric.Natural
 
 data Bit = Zero | One
   deriving (Eq, Ord)
@@ -26,3 +27,17 @@ instance Show CReg where
 mkCReg :: [Bit] -> CReg
 mkCReg = CReg . V.fromList
 
+cregBit :: Bit -> CReg
+cregBit b = CReg $ V.singleton b
+
+crSize :: CReg -> Natural
+crSize (CReg v) = fromIntegral $ V.length v
+
+-- | Non-total. Be careful with indexing.
+setBit :: Natural -> Bit -> CReg -> CReg
+setBit i bit (CReg bs) = CReg $ bs V.// [(j,bit)]
+  where j = fromIntegral $ toInteger i
+
+crIndex :: CReg -> Natural -> Bit
+crIndex (CReg bs) i = bs V.! j
+  where j = fromIntegral $ toInteger i

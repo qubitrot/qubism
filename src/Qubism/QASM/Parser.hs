@@ -156,8 +156,8 @@ argument = do
   ident <- identifier
   index <- optional $ brackets natural
   case index of
-    Nothing -> pure $ ArgReg   ident
-    Just i  -> pure $ ArgQubit ident i
+    Nothing -> pure $ ArgReg ident
+    Just i  -> pure $ ArgBit ident i
 
 expr :: Parser Expr
 expr = makeExprParser term exprOps

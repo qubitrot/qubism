@@ -8,6 +8,7 @@ Maintainer  : keith@qubitrot.org
 
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ExistentialQuantification #-}
 
@@ -32,7 +33,7 @@ import Qubism.QASM.Types
 -- | This datatype encapsulates the concept of QReg's in QASM, which cannot
 -- be considered independant. A QReg is a portion (perhaps the whole thing)
 -- of a StateVec that is used in a calculation.
-data QReg = QReg 
+data QReg = QReg
   Id      -- ^ Identifier of the StateVec representing the full state
   Natural -- ^ Index of the first qubit
   Natural -- ^ Size of the register
@@ -50,9 +51,9 @@ data ProgState = ProgState
   }
 
 instance Show ProgState where
-  show (ProgState sv qr cr) = "ProgState:\n" 
+  show (ProgState sv qr cr) = "ProgState_________________\n"
     ++ "StateVecs: " ++ show sv ++ "\n"
-    ++ "QRegs:     " ++ show qr ++ "\n" 
+    ++ "QRegs:     " ++ show qr ++ "\n"
     ++ "CRegs:     " ++ show cr ++ "\n"
 
 blankState :: ProgState
@@ -61,23 +62,22 @@ blankState = ProgState Map.empty Map.empty Map.empty
 data RuntimeError = RuntimeError String
   deriving Show
 
-type ProgramM m = StateT ProgState (ExceptT RuntimeError m) 
+type ProgramM m = StateT ProgState (ExceptT RuntimeError m)
 
 runProgram :: Program -> IO (Either RuntimeError ProgState)
-runProgram prog = 
+runProgram prog =
   let comp = mapM_ runStmt prog
   in  runExceptT . execStateT comp $ blankState
 
 runStmt :: MonadRandom m => Stmt -> ProgramM m ()
 runStmt (QRegDecl name size) = do
-  addQReg     name size
-  addStateVec name size
+  addQReg name size
 runStmt (CRegDecl name size) =
-  addCReg name size  
-runStmt (GateDecl name params args ops) = 
+  addCReg name size
+runStmt (GateDecl name params args ops) =
   lift . throwE $ RuntimeError "not yet implimented"
 runStmt (QOp op) = case op of
-  Measure arg1 arg2 -> lift . throwE $ RuntimeError "not yet implimented"
+  Measure argQ argC -> observe argQ argC
   Reset   arg       -> lift . throwE $ RuntimeError "not yet implimented"
 runStmt (UOp op) = case op of
   U       p1 p2 p3 arg    -> unitary (expr p1) (expr p2) (expr p3) ##> arg
@@ -107,27 +107,60 @@ expr e = case e of
     Ln   -> log  $ expr a
     Sqrt -> sqrt $ expr a
 
--- | Apply a QGate to a QReg held in the ProgState
+-- | Apply a single qubit gate with an argument
 (##>) :: Monad m => QGate 1 -> Arg -> ProgramM m ()
 (##>) g arg = do
   ps <- get
-  (QReg idSV i s) <- findId (argId arg) $ (qregs ps)
+  (QReg idSV i s) <- findId (argId arg) (qregs ps)
   case Map.lookup idSV (stVecs ps) of   -- There should be a cleaner way to
     Just (SomeSV (sv :: StateVec n)) -> -- witness these types. TODO.
       let ix j = finite $ toInteger (j+i) :: Finite n
-          sv'  = case arg of 
-                   (ArgQubit _ k) -> SomeSV $ onJust  (ix k)           g #> sv
-                   (ArgReg   _  ) -> SomeSV $ onRange (ix 0) (ix(s-1)) g #> sv
-          svs' = Map.insert idSV sv' (stVecs ps)
-      in  put $ ProgState svs' (qregs ps) (cregs ps)
-    Nothing -> pure ()
+          sv'  = case arg of
+            (ArgBit _ k) -> onJust  (ix k)           g #> sv
+            (ArgReg _  ) -> onRange (ix 0) (ix(s-1)) g #> sv
+      in  writeStateVec sv' idSV
+    Nothing -> undefined
+
+-- | Lift a stateful, indexed, single qubit function into the ProgramM
+-- context. Basically only used as a helper function for measurement atm.
+applyTo
+  :: Monad m
+  => (forall n. KnownNat n 
+      => Finite n 
+      -> StateT (StateVec n) m a)
+  -> Natural
+  -> Arg
+  -> ProgramM m a
+applyTo st i arg = do
+  ps <- get
+  (QReg idSV j _) <- findId (argId arg) (qregs ps)
+  case Map.lookup idSV (stVecs ps) of      -- There should be a cleaner way
+    Just (SomeSV (sv :: StateVec n)) -> do -- to witness these types. TODO.
+      let k = finite $ toInteger (i+j)
+      (a, sv') <- lift . lift $ runStateT (st k) sv
+      writeStateVec sv' idSV
+      pure a
+    Nothing -> undefined
+
+observe :: MonadRandom m => Arg -> Arg -> ProgramM m ()
+observe argQ argC = do
+  bits <- case argQ of 
+    ArgBit _ k  -> cregBit <$> applyTo measureQubit k argQ
+    ArgReg name -> do
+      ps <- get
+      (QReg _ i s) <- findId name (qregs ps)
+      let mq j = applyTo measureQubit j argQ
+      mkCReg <$> traverse mq [i..i+s-1]
+  case argC of
+    ArgBit name k -> writeBit (crIndex bits 0) name k
+    ArgReg name   -> writeCReg bits (argId argC)
 
 findId :: Monad m => Id -> Map.Map Id v -> ProgramM m v
 findId name table =
   case Map.lookup name table of
     Just v  -> pure v
-    Nothing -> lift . throwE . RuntimeError 
-               $ "Undeclared identifier: " ++ name 
+    Nothing -> lift . throwE . RuntimeError
+               $ "Undeclared identifier: " ++ name
 
 addQReg :: Monad m => Id -> Size -> ProgramM m ()
 addQReg name size = do
@@ -136,6 +169,7 @@ addQReg name size = do
   let qr   = QReg name 0 size
       qrs' = Map.insert name qr (qregs ps)
   put $ ProgState (stVecs ps) qrs' (cregs ps)
+  addStateVec name size
 
 addCReg :: Monad m => Id -> Size -> ProgramM m ()
 addCReg name size = do
@@ -145,18 +179,48 @@ addCReg name size = do
       crs' = Map.insert name cr (cregs ps)
   put $ ProgState (stVecs ps) (qregs ps) crs'
 
+writeCReg :: Monad m => CReg -> Id -> ProgramM m ()
+writeCReg creg name = do
+  ps <- get
+  let crs = cregs ps
+  cr <- findId name crs
+  if crSize creg == crSize cr 
+    then let crs' = Map.insert name creg crs
+         in  put $ ProgState (stVecs ps) (qregs ps) crs'
+    else lift . throwE . RuntimeError 
+         $ "Mismatched size on overwrite of " ++ name
+
+writeBit :: Monad m => Bit -> Id -> Index -> ProgramM m ()
+writeBit bit name i = do
+  ps <- get
+  let crs = cregs ps
+  cr <- findId name crs
+  if i < crSize cr 
+    then let crs' = Map.insert name (setBit i bit cr) crs
+         in  put $ ProgState (stVecs ps) (qregs ps) crs'
+    else lift . throwE . RuntimeError 
+         $ "Index out of bounds when writing to " ++ name
+
 addStateVec :: Monad m => Id -> Size -> ProgramM m ()
 addStateVec name size = do
   ps <- get
   checkNameConflict name (stVecs ps)
-  case someNatVal (toInteger size) of 
+  case someNatVal (toInteger size) of
     Just (SomeNat sn) -> do
       let sv   = SomeSV . mkStateVec' $ singByProxy sn
           svs' = Map.insert name sv (stVecs ps)
       put $ ProgState svs' (qregs ps) (cregs ps)
+    Nothing -> undefined
+
+writeStateVec :: (Monad m, KnownNat n) => StateVec n -> Id -> ProgramM m ()
+writeStateVec sv name = do
+  ps <- get
+  let svs' = Map.insert name (SomeSV sv) (stVecs ps)
+  put $ ProgState svs' (qregs ps) (cregs ps)
 
 checkNameConflict :: Monad m => Id -> Map.Map Id v -> ProgramM m ()
-checkNameConflict name table = 
-  if name `Map.member` table 
-    then lift . throwE . RuntimeError $ "Redeclaration of " ++ name 
+checkNameConflict name table =
+  if name `Map.member` table
+    then lift . throwE . RuntimeError $ "Redeclaration of " ++ name
     else pure ()
+  
