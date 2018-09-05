@@ -70,10 +70,8 @@ runProgram prog =
   in  runExceptT . execStateT comp $ blankState
 
 runStmt :: MonadRandom m => Stmt -> ProgramM m ()
-runStmt (QRegDecl name size) = do
-  addQReg name size
-runStmt (CRegDecl name size) =
-  addCReg name size
+runStmt (QRegDecl name size) = addQReg name size
+runStmt (CRegDecl name size) = addCReg name size
 runStmt (GateDecl name params args ops) =
   lift . throwE $ RuntimeError "not yet implimented"
 runStmt (QOp op) = case op of
@@ -81,7 +79,7 @@ runStmt (QOp op) = case op of
   Reset   arg       -> lift . throwE $ RuntimeError "not yet implimented"
 runStmt (UOp op) = case op of
   U       p1 p2 p3 arg    -> unitary (expr p1) (expr p2) (expr p3) ##> arg
-  CX      arg1 arg2       -> lift . throwE $ RuntimeError "not yet implimented"
+  CX      arg1 arg2       -> cx arg1 arg2
   Func    name exprs args -> lift . throwE $ RuntimeError "not yet implimented"
   Barrier args            -> lift . throwE $ RuntimeError "not yet implimented"
 runStmt (Cond name nat op) =
@@ -107,19 +105,40 @@ expr e = case e of
     Ln   -> log  $ expr a
     Sqrt -> sqrt $ expr a
 
+witnessSV 
+  :: SomeStateVec
+  -> (forall n. KnownNat n => StateVec n -> a)
+  -> a
+witnessSV ssv f = case ssv of
+  SomeSV (sv :: StateVec n) -> f sv
+
 -- | Apply a single qubit gate with an argument
 (##>) :: Monad m => QGate 1 -> Arg -> ProgramM m ()
 (##>) g arg = do
   ps <- get
   (QReg idSV i s) <- findId (argId arg) (qregs ps)
-  case Map.lookup idSV (stVecs ps) of   -- There should be a cleaner way to
-    Just (SomeSV (sv :: StateVec n)) -> -- witness these types. TODO.
-      let ix j = finite $ toInteger (j+i) :: Finite n
-          sv'  = case arg of
-            (ArgBit _ k) -> onJust  (ix k)           g #> sv
-            (ArgReg _  ) -> onRange (ix 0) (ix(s-1)) g #> sv
-      in  writeStateVec sv' idSV
-    Nothing -> undefined
+  ssv             <- findId idSV (stVecs ps)
+  witnessSV ssv $ \sv ->
+    let ix j = finite $ toInteger (j+i)
+        sv'  = case arg of
+          (ArgBit _ k) -> onJust  (ix k)           g #> sv
+          (ArgReg _  ) -> onRange (ix 0) (ix(s-1)) g #> sv
+    in  writeStateVec sv' idSV
+
+applyOn 
+  :: Monad m 
+  => (forall n. KnownNat n => Finite n -> QGate n) 
+  -> Arg -> ProgramM m ()
+applyOn g arg = do
+  ps <- get
+  (QReg idSV i s) <- findId (argId arg) (qregs ps)
+  ssv             <- findId idSV (stVecs ps)
+  witnessSV ssv $ \sv ->
+    let ix j = finite $ toInteger (j+i)
+        sv'  = case arg of
+          (ArgBit _ k) -> g (ix k) #> sv
+          (ArgReg _  ) -> undefined
+    in  writeStateVec sv' idSV
 
 -- | Lift a stateful, indexed, single qubit function into the ProgramM
 -- context. Basically only used as a helper function for measurement atm.
@@ -134,13 +153,12 @@ applyTo
 applyTo st i arg = do
   ps <- get
   (QReg idSV j _) <- findId (argId arg) (qregs ps)
-  case Map.lookup idSV (stVecs ps) of      -- There should be a cleaner way
-    Just (SomeSV (sv :: StateVec n)) -> do -- to witness these types. TODO.
-      let k = finite $ toInteger (i+j)
-      (a, sv') <- lift . lift $ runStateT (st k) sv
-      writeStateVec sv' idSV
-      pure a
-    Nothing -> undefined
+  ssv             <- findId idSV (stVecs ps)
+  witnessSV ssv $ \sv -> do
+    let k = finite $ toInteger (i+j)
+    (a, sv') <- lift . lift $ runStateT (st k) sv
+    writeStateVec sv' idSV
+    pure a
 
 observe :: MonadRandom m => Arg -> Arg -> ProgramM m ()
 observe argQ argC = do
@@ -154,6 +172,29 @@ observe argQ argC = do
   case argC of
     ArgBit name k -> writeBit (crIndex bits 0) name k
     ArgReg name   -> writeCReg bits (argId argC)
+
+cx :: Monad m => Arg -> Arg -> ProgramM m ()
+cx arg1 arg2 = do
+  ps <- get
+  let qr1 = argId arg1
+      qr2 = argId arg2
+  idSV <- fuseQRegs qr1 qr2 -- NOP if qr1 and qr2 are supported by the 
+  (QReg _ i s) <- findId qr1 (qregs ps) -- same underlying StateVec.
+  case arg1 of 
+    (ArgBit _ k) -> 
+      cnot (finite $ toInteger (i + k)) `applyOn` arg2 
+    (ArgReg _  ) -> 
+      let cn k = cnot (finite $ toInteger (i + k)) `applyOn` arg2
+      in  mapM_ cn [i..i+s-1]
+
+fuseQRegs :: Monad m => Id -> Id -> ProgramM m Id
+fuseQRegs qr1 qr2 = do
+  ps <- get
+  (QReg ssv1 i1 s1) <- findId qr1 (qregs ps)
+  (QReg ssv2 i2 s2) <- findId qr2 (qregs ps)
+  if ssv1 == ssv2 
+    then pure ssv1
+    else undefined
 
 findId :: Monad m => Id -> Map.Map Id v -> ProgramM m v
 findId name table =
