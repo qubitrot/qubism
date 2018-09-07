@@ -23,6 +23,7 @@ dependencies:
 - transformers
 - singletons
 - finite-typelits
+- ghc-typelits-knownnat
 - MonadRandom
 - hmatrix
 - vector

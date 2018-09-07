@@ -6,6 +6,8 @@ License     : MIT
 Maintainer  : keith@qubitrot.org
 -}
 
+{-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
+
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE RankNTypes          #-}
@@ -17,6 +19,7 @@ module Qubism.QASM.Simulation where
 -- For dependent typing
 import GHC.TypeLits
 import Data.Singletons
+import Data.Singletons.TypeLits
 import Data.Finite
 
 import qualified Data.Map.Strict as Map
@@ -187,14 +190,35 @@ cx arg1 arg2 = do
       let cn k = cnot (finite $ toInteger (i + k)) `applyOn` arg2
       in  mapM_ cn [i..i+s-1]
 
+-- | QReg's are often independant, so they can be backed by independant
+-- StateVecs. But when QReg's become entangled we must store the combined
+-- state. fuseQRegs forms the composite system and returns the Id of the
+-- SomeStateVec stored in the ProgState, while updating QReg's to point to 
+-- it. If both QReg's are already backed by the same StateVec, then NOP.
 fuseQRegs :: Monad m => Id -> Id -> ProgramM m Id
 fuseQRegs qr1 qr2 = do
   ps <- get
-  (QReg ssv1 i1 s1) <- findId qr1 (qregs ps)
-  (QReg ssv2 i2 s2) <- findId qr2 (qregs ps)
-  if ssv1 == ssv2 
-    then pure ssv1
-    else undefined
+  let qrs = qregs ps
+  (QReg ssvId1 i1 s1) <- findId qr1 qrs
+  (QReg ssvId2 i2 s2) <- findId qr2 qrs
+  if ssvId1 == ssvId2 
+    then pure ssvId1
+    else do 
+      ssv1 <- findId ssvId1 (stVecs ps)
+      ssv2 <- findId ssvId2 (stVecs ps)
+      let ssvId' = ssvId1 ++ "(x)" ++ ssvId2
+      -- Build the new StateVec
+      witnessSV ssv1 $ \(sv1 :: StateVec n1) ->
+        witnessSV ssv2 $ \(sv2 :: StateVec n2) ->
+          let sv' = sv1 `tensor` sv2
+          in  writeStateVec sv' ssvId'
+      -- Update QReg's                  -- TODO: Check for additional QReg's
+      writeQReg (QReg ssvId' i1 s1) qr1 -- which may refer to a removed 
+      writeQReg (QReg ssvId' i2 s2) qr2 -- StateVec.
+      -- Remove unused StateVecs
+      deleteStateVec ssvId1
+      deleteStateVec ssvId2
+      pure ssvId'
 
 findId :: Monad m => Id -> Map.Map Id v -> ProgramM m v
 findId name table =
@@ -211,6 +235,14 @@ addQReg name size = do
       qrs' = Map.insert name qr (qregs ps)
   put $ ProgState (stVecs ps) qrs' (cregs ps)
   addStateVec name size
+
+writeQReg :: Monad m => QReg -> Id -> ProgramM m ()
+writeQReg qreg name = do
+  ps <- get
+  let qrs = qregs ps
+  qr <- findId name qrs
+  let qrs' = Map.insert name qreg qrs
+  put $ ProgState (stVecs ps) qrs' (cregs ps)
 
 addCReg :: Monad m => Id -> Size -> ProgramM m ()
 addCReg name size = do
@@ -258,6 +290,12 @@ writeStateVec sv name = do
   ps <- get
   let svs' = Map.insert name (SomeSV sv) (stVecs ps)
   put $ ProgState svs' (qregs ps) (cregs ps)
+
+deleteStateVec :: Monad m => Id -> ProgramM m ()
+deleteStateVec name = do
+  ps <- get
+  let svs = stVecs ps
+  put $ ProgState (Map.delete name svs) (qregs ps) (cregs ps)
 
 checkNameConflict :: Monad m => Id -> Map.Map Id v -> ProgramM m ()
 checkNameConflict name table =
