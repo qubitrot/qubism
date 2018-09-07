@@ -33,6 +33,7 @@ import           Control.Monad.Trans.State.Strict
 import           Data.Complex
 import           Numeric.LinearAlgebra ((|>))
 import qualified Numeric.LinearAlgebra as LA
+import           Text.Printf
 
 import Qubism.Algebra
 import Qubism.CReg
@@ -56,7 +57,9 @@ instance KnownNat n => HilbertSpace (StateVec n) where
 
 instance KnownNat n => Show (StateVec n) where
   show (UnsafeMkStateVec zs) = foldl show' "" $ zip [0..] (LA.toList zs)
-    where show' str (i,z) = str ++ show z ++ "\t" ++ basis i ++ "\n"
+    where show' str (i,z) = str ++ pf z ++ "  " ++ basis i ++ "\n"
+          pf z    =  printf "% 6.4f" (realPart z) ++ "  + " 
+                  ++ printf "% 6.4f" (imagPart z) ++ "i"
           basis i = let bit j = if i `quot` 2^(n-j-1) `mod` 2 == 0
                                 then '0' else '1'
                     in  "|" ++ fmap bit (take n [0..]) ++ ">"
