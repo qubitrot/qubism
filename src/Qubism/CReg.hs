@@ -33,11 +33,17 @@ cregBit b = CReg $ V.singleton b
 crSize :: CReg -> Natural
 crSize (CReg v) = fromIntegral $ V.length v
 
+crToNatural :: CReg -> Natural
+crToNatural (CReg v) = sum . fmap f $ V.indexed v
+  where f (i, b) | b == One  = 2^i
+                 | otherwise = 0;
+
 -- | Non-total. Be careful with indexing.
 setBit :: Natural -> Bit -> CReg -> CReg
 setBit i bit (CReg bs) = CReg $ bs V.// [(j,bit)]
   where j = fromIntegral $ toInteger i
 
+-- | Non-total. Be careful with indexing.
 crIndex :: CReg -> Natural -> Bit
 crIndex (CReg bs) i = bs V.! j
   where j = fromIntegral $ toInteger i

@@ -29,8 +29,9 @@ data Stmt
   deriving (Eq, Show)
 
 data QuantumOp
-  = Measure Arg Arg -- ^ source, target
-  | Reset   Arg
+  = QUnitary UnitaryOp
+  | Measure  Arg Arg -- ^ source, target
+  | Reset    Arg
   deriving (Eq, Show)
 
 data UnitaryOp

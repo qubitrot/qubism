@@ -76,11 +76,11 @@ program :: Parser Program
 program = sepEndBy1 stmt (semi <|> symbol "}")
 
 stmt :: Parser Stmt
-stmt =  regDecl 
+stmt =  cond
+    <|> regDecl
     <|> gateDecl
     <|> QOp <$> qop
     <|> UOp <$> uop
-    <|> cond
 
 regDecl :: Parser Stmt
 regDecl = do
@@ -101,7 +101,7 @@ gateDecl = do
   pure $ GateDecl ident params args body
 
 qop :: Parser QuantumOp
-qop = measure <|> reset
+qop = measure <|> reset <|>unitary
   where 
     measure = do
       symbol "measure"
@@ -113,6 +113,7 @@ qop = measure <|> reset
       symbol "reset"
       target <- argument
       pure $ Reset target
+    unitary = QUnitary <$> uop
 
 uop :: Parser UnitaryOp
 uop = u <|> cx <|> func <|> barrier

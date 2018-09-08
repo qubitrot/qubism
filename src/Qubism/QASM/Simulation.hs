@@ -43,15 +43,18 @@ runStmt (CRegDecl name size) = addCReg name size
 runStmt (GateDecl name params args ops) =
   lift . throwE $ RuntimeError "not yet implimented"
 runStmt (QOp op) = case op of
-  Measure argQ argC -> observe argQ argC
-  Reset   arg       -> lift . throwE $ RuntimeError "not yet implimented"
+  QUnitary op        -> runStmt $ UOp op
+  Measure  argQ argC -> observe argQ argC
+  Reset    arg       -> lift . throwE $ RuntimeError "not yet implimented"
 runStmt (UOp op) = case op of
   U       p1 p2 p3 arg    -> unitary (expr p1) (expr p2) (expr p3) ##> arg
   CX      arg1 arg2       -> cx arg1 arg2
   Func    name exprs args -> lift . throwE $ RuntimeError "not yet implimented"
   Barrier args            -> lift . throwE $ RuntimeError "not yet implimented"
-runStmt (Cond name nat op) =
-  lift . throwE $ RuntimeError "not yet implimented"
+runStmt (Cond name nat op) = do
+  ps <- get
+  cr <- findId name (cregs ps)
+  when (crToNatural cr == nat) $ runStmt (QOp op)
 
 -- | Apply a single qubit gate with an argument
 (##>) :: Monad m => QGate 1 -> Arg -> ProgramM m ()
