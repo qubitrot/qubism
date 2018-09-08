@@ -29,7 +29,7 @@ import Numeric.Natural
 import Qubism.CReg
 import Qubism.StateVec
 import Qubism.QGate
-import Qubism.QASM.Types
+import Qubism.QASM.AST
 import Qubism.QASM.ProgState
 
 runProgram :: Program -> IO (Either RuntimeError ProgState)

@@ -1,12 +1,12 @@
 {-|
-Module      : Qubism.QASM.Types
+Module      : Qubism.QASM.AST
 Description : Defines an AST for OpenQASM 2.0
 Copyright   : (c) Keith Pearson, 2018
 License     : MIT
 Maintainer  : keith@qubitrot.org
 -}
 
-module Qubism.QASM.Types where
+module Qubism.QASM.AST where
 
 import Numeric.Natural
 

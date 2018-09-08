@@ -30,7 +30,7 @@ import Numeric.Natural
 
 import Qubism.CReg
 import Qubism.StateVec
-import Qubism.QASM.Types
+import Qubism.QASM.AST
 
 -- | This datatype encapsulates the concept of QReg's in QASM, which cannot
 -- be considered independant. A QReg is a portion (perhaps the whole thing)
