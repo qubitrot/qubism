@@ -133,8 +133,12 @@ gateDecl = do
   ident  <- newIdent
   params <- option [] $ parens (list newIdent)
   args   <- nonempty newIdent
-  body   <- symbol "{" *> many (uop <* semi)
-  pure $ GateDecl ident params args body
+  traverse (flip insertId (IdQReg 1)) args   -- temporarily declare these ids
+  traverse (flip insertId  IdExpr   ) params -- in global scope to check for
+  body   <- symbol "{" *> many (uop <* semi) -- conflicts or undeclared ids.
+  traverse deleteId args                     -- This unfortunately prevents
+  traverse deleteId params                   -- name shadowing. There's 
+  pure $ GateDecl ident params args body     -- probably a better way.
 
 qop :: Parser QuantumOp
 qop = measure <|> reset <|>unitary
@@ -229,3 +233,5 @@ insertId id idtype = lookupId id >>= \case
     Just _  -> fail $ "Redeclaration of " ++ id
     Nothing -> lift . modify $ Map.insert id idtype
 
+deleteId :: Id -> Parser ()
+deleteId id = lift . modify $ Map.delete id
