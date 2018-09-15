@@ -6,19 +6,45 @@ License     : MIT
 Maintainer  : keith@qubitrot.org
 -}
 
-module Qubism.QASM.Parser where
+{-# LANGUAGE LambdaCase #-}
 
-import Control.Monad
+module Qubism.QASM.Parser 
+  ( parseOpenQASM )
+  where
+
 import Data.Void
 import Numeric.Natural
-import           Text.Megaparsec
+import Control.Monad
+import Control.Monad.Trans.State.Strict
+import Control.Monad.Trans.Class
+import qualified Data.Map as Map
+
+import           Text.Megaparsec hiding (State)
 import           Text.Megaparsec.Char
 import           Text.Megaparsec.Expr
 import qualified Text.Megaparsec.Char.Lexer as L
 
 import Qubism.QASM.AST
 
-type Parser = Parsec Void String
+data IdType 
+  = IdQReg Size
+  | IdCReg Size
+  | IdGate IdTable
+  | IdExpr
+  deriving Show
+
+type IdTable = Map.Map Id IdType
+type Parser  = ParsecT Void String (State IdTable)
+
+parseOpenQASM 
+  :: String -- ^ Name of source file 
+  -> String -- ^ Input for parser
+  -> Either String (Program, IdTable) 
+parseOpenQASM file input =
+  let parsed = runParserT mainprogram file input
+  in  case runState parsed Map.empty of
+        (Left  err,  idTable) -> Left  $ parseErrorPretty err
+        (Right prog, idTable) -> Right (prog, idTable)
 
 --------- Lexing --------------------------------------
 
@@ -88,8 +114,10 @@ regDecl = do
   ident  <- identifier
   size   <- brackets natural
   case prefix of
-    "qreg" -> pure $ QRegDecl ident size
-    "creg" -> pure $ CRegDecl ident size
+    "qreg" -> do insertId ident $ IdQReg size
+                 pure $ QRegDecl ident size
+    "creg" -> do insertId ident $ IdCReg size
+                 pure $ CRegDecl ident size
 
 gateDecl :: Parser Stmt
 gateDecl = do
@@ -182,4 +210,14 @@ exprOps =
   , [ InfixL (Binary Add  <$ symbol "+"   )
     , InfixL (Binary Sub  <$ symbol "-"   ) ]
   ]
+
+---------- Utilities -----------
+
+lookupId :: Id -> Parser (Maybe IdType)
+lookupId id = lift . gets $ Map.lookup id
+
+insertId :: Id -> IdType -> Parser ()
+insertId id idtype = lookupId id >>= \case
+    Just _  -> fail $ "Redeclaration of " ++ id
+    Nothing -> lift . modify $ Map.insert id idtype
 
