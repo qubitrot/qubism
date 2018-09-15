@@ -72,8 +72,16 @@ double :: RealFloat a => Parser a
 double =  try (lexeme L.float) 
       <|> fromIntegral <$> natural
 
-identifier :: Parser String
-identifier = lexeme . try $ (:) <$> letterChar <*> many alphaNumChar
+newIdent :: Parser String
+newIdent = lexeme . try $ (:) <$> letterChar <*> many alphaNumChar
+
+knownIdent :: Parser String
+knownIdent = do
+  id <- newIdent
+  a  <- lookupId id
+  case a of
+    Just _  -> pure id
+    Nothing -> fail $ "Undeclared identifier: " ++ id
 
 parens :: Parser a -> Parser a
 parens = between (symbol "(") (symbol ")")
@@ -111,7 +119,7 @@ stmt =  cond
 regDecl :: Parser Stmt
 regDecl = do
   prefix <- symbol "qreg" <|> symbol "creg"
-  ident  <- identifier
+  ident  <- newIdent
   size   <- brackets natural
   case prefix of
     "qreg" -> do insertId ident $ IdQReg size
@@ -122,9 +130,9 @@ regDecl = do
 gateDecl :: Parser Stmt
 gateDecl = do
   symbol "gate"
-  ident  <- identifier
-  params <- option [] $ parens (list identifier)
-  args   <- nonempty identifier
+  ident  <- newIdent
+  params <- option [] $ parens (list newIdent)
+  args   <- nonempty newIdent
   body   <- symbol "{" *> many (uop <* semi)
   pure $ GateDecl ident params args body
 
@@ -161,7 +169,7 @@ uop = u <|> cx <|> func <|> barrier
       arg2 <- argument
       pure $ CX arg1 arg2
     func = do
-      ident  <- identifier
+      ident  <- knownIdent
       params <- option [] $ parens (list expr)
       args   <- list argument
       pure $ Func ident params args
@@ -173,7 +181,7 @@ uop = u <|> cx <|> func <|> barrier
 cond :: Parser Stmt
 cond = do
   symbol "if" *> symbol "("
-  ident <- identifier
+  ident <- knownIdent
   symbol "=="
   num <- natural
   symbol ")"
@@ -182,7 +190,7 @@ cond = do
 
 argument :: Parser Arg
 argument = do
-  ident <- identifier
+  ident <- knownIdent
   index <- optional $ brackets natural
   case index of
     Nothing -> pure $ ArgReg ident
@@ -191,7 +199,7 @@ argument = do
 expr :: Parser Expr
 expr = makeExprParser term exprOps
   where term =  symbol "pi" *> pure Pi
-            <|> Ident <$> identifier 
+            <|> Ident <$> knownIdent
             <|> Real  <$> double
             <|> parens expr
 
