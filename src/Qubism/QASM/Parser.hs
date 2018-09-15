@@ -6,19 +6,45 @@ License     : MIT
 Maintainer  : keith@qubitrot.org
 -}
 
-module Qubism.QASM.Parser where
+{-# LANGUAGE LambdaCase #-}
 
-import Control.Monad
+module Qubism.QASM.Parser 
+  ( parseOpenQASM )
+  where
+
 import Data.Void
 import Numeric.Natural
-import           Text.Megaparsec
+import Control.Monad
+import Control.Monad.Trans.State.Strict
+import Control.Monad.Trans.Class
+import qualified Data.Map as Map
+
+import           Text.Megaparsec hiding (State)
 import           Text.Megaparsec.Char
 import           Text.Megaparsec.Expr
 import qualified Text.Megaparsec.Char.Lexer as L
 
 import Qubism.QASM.AST
 
-type Parser = Parsec Void String
+data IdType 
+  = IdQReg Size
+  | IdCReg Size
+  | IdGate IdTable
+  | IdExpr
+  deriving Show
+
+type IdTable = Map.Map Id IdType
+type Parser  = ParsecT Void String (State IdTable)
+
+parseOpenQASM 
+  :: String -- ^ Name of source file 
+  -> String -- ^ Input for parser
+  -> Either String Program 
+parseOpenQASM file input =
+  let parsed = runParserT mainprogram file input
+  in  case runState parsed Map.empty of
+        (Left  err,  _) -> Left $ parseErrorPretty err
+        (Right prog, _) -> Right  prog
 
 --------- Lexing --------------------------------------
 
@@ -46,8 +72,16 @@ double :: RealFloat a => Parser a
 double =  try (lexeme L.float) 
       <|> fromIntegral <$> natural
 
-identifier :: Parser String
-identifier = lexeme . try $ (:) <$> letterChar <*> many alphaNumChar
+newIdent :: Parser String
+newIdent = lexeme . try $ (:) <$> letterChar <*> many alphaNumChar
+
+knownIdent :: Parser String
+knownIdent = do
+  id <- newIdent
+  a  <- lookupId id
+  case a of
+    Just _  -> pure id
+    Nothing -> fail $ "Undeclared identifier: " ++ id
 
 parens :: Parser a -> Parser a
 parens = between (symbol "(") (symbol ")")
@@ -85,20 +119,26 @@ stmt =  cond
 regDecl :: Parser Stmt
 regDecl = do
   prefix <- symbol "qreg" <|> symbol "creg"
-  ident  <- identifier
+  ident  <- newIdent
   size   <- brackets natural
   case prefix of
-    "qreg" -> pure $ QRegDecl ident size
-    "creg" -> pure $ CRegDecl ident size
+    "qreg" -> do insertId ident $ IdQReg size
+                 pure $ QRegDecl ident size
+    "creg" -> do insertId ident $ IdCReg size
+                 pure $ CRegDecl ident size
 
 gateDecl :: Parser Stmt
 gateDecl = do
   symbol "gate"
-  ident  <- identifier
-  params <- option [] $ parens (list identifier)
-  args   <- nonempty identifier
-  body   <- symbol "{" *> many (uop <* semi)
-  pure $ GateDecl ident params args body
+  ident  <- newIdent
+  params <- option [] $ parens (list newIdent)
+  args   <- nonempty newIdent
+  traverse (flip insertId (IdQReg 1)) args   -- temporarily declare these ids
+  traverse (flip insertId  IdExpr   ) params -- in global scope to check for
+  body   <- symbol "{" *> many (uop <* semi) -- conflicts or undeclared ids.
+  traverse deleteId args                     -- This unfortunately prevents
+  traverse deleteId params                   -- name shadowing. There's 
+  pure $ GateDecl ident params args body     -- probably a better way.
 
 qop :: Parser QuantumOp
 qop = measure <|> reset <|>unitary
@@ -133,7 +173,7 @@ uop = u <|> cx <|> func <|> barrier
       arg2 <- argument
       pure $ CX arg1 arg2
     func = do
-      ident  <- identifier
+      ident  <- knownIdent
       params <- option [] $ parens (list expr)
       args   <- list argument
       pure $ Func ident params args
@@ -145,7 +185,7 @@ uop = u <|> cx <|> func <|> barrier
 cond :: Parser Stmt
 cond = do
   symbol "if" *> symbol "("
-  ident <- identifier
+  ident <- knownIdent
   symbol "=="
   num <- natural
   symbol ")"
@@ -154,7 +194,7 @@ cond = do
 
 argument :: Parser Arg
 argument = do
-  ident <- identifier
+  ident <- knownIdent
   index <- optional $ brackets natural
   case index of
     Nothing -> pure $ ArgReg ident
@@ -163,7 +203,7 @@ argument = do
 expr :: Parser Expr
 expr = makeExprParser term exprOps
   where term =  symbol "pi" *> pure Pi
-            <|> Ident <$> identifier 
+            <|> Ident <$> knownIdent
             <|> Real  <$> double
             <|> parens expr
 
@@ -183,3 +223,15 @@ exprOps =
     , InfixL (Binary Sub  <$ symbol "-"   ) ]
   ]
 
+---------- Utilities -----------
+
+lookupId :: Id -> Parser (Maybe IdType)
+lookupId id = lift . gets $ Map.lookup id
+
+insertId :: Id -> IdType -> Parser ()
+insertId id idtype = lookupId id >>= \case
+    Just _  -> fail $ "Redeclaration of " ++ id
+    Nothing -> lift . modify $ Map.insert id idtype
+
+deleteId :: Id -> Parser ()
+deleteId id = lift . modify $ Map.delete id
