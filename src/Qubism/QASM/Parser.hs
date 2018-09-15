@@ -29,7 +29,7 @@ import Qubism.QASM.AST
 data IdType 
   = IdQReg Size
   | IdCReg Size
-  | IdGate IdTable
+  | IdGate
   | IdExpr
   deriving Show
 
@@ -133,6 +133,7 @@ gateDecl = do
   ident  <- newIdent
   params <- option [] $ parens (list newIdent)
   args   <- nonempty newIdent
+  insertId ident $ IdGate
   traverse (flip insertId (IdQReg 1)) args   -- temporarily declare these ids
   traverse (flip insertId  IdExpr   ) params -- in global scope to check for
   body   <- symbol "{" *> many (uop <* semi) -- conflicts or undeclared ids.
