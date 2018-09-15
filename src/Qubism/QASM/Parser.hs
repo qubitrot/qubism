@@ -39,12 +39,12 @@ type Parser  = ParsecT Void String (State IdTable)
 parseOpenQASM 
   :: String -- ^ Name of source file 
   -> String -- ^ Input for parser
-  -> Either String (Program, IdTable) 
+  -> Either String Program 
 parseOpenQASM file input =
   let parsed = runParserT mainprogram file input
   in  case runState parsed Map.empty of
-        (Left  err,  idTable) -> Left  $ parseErrorPretty err
-        (Right prog, idTable) -> Right (prog, idTable)
+        (Left  err,  _) -> Left $ parseErrorPretty err
+        (Right prog, _) -> Right  prog
 
 --------- Lexing --------------------------------------
 

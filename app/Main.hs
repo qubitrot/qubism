@@ -11,8 +11,8 @@ main = do
   source <- readFile file 
   case parseOpenQASM file source of
     Left  err -> putStr err
-    Right (prog, idTable) -> do
+    Right prog -> do
       st <- runProgram prog
       case st of 
         Left  error  -> print error
-        Right progSt -> print progSt >> print idTable
+        Right progSt -> print progSt
