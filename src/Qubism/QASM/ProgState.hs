@@ -46,20 +46,25 @@ data SomeStateVec = forall n . KnownNat n => SomeSV (StateVec n)
 instance Show SomeStateVec where
   show (SomeSV sv) = "\n" ++ show sv
 
+data CustomGate = CustomGate [Id] [Id] [UnitaryOp]
+  deriving Show
+
 data ProgState = ProgState
   { stVecs :: Map.Map Id SomeStateVec
   , qregs  :: Map.Map Id QReg
   , cregs  :: Map.Map Id CReg
+  , funcs  :: Map.Map Id CustomGate
   }
 
 instance Show ProgState where
-  show (ProgState sv qr cr) = "ProgState_________________\n"
+  show (ProgState sv qr cr fs) = "ProgState_________________\n"
     ++ "StateVecs: " ++ show sv ++ "\n"
     ++ "QRegs:     " ++ show qr ++ "\n"
     ++ "CRegs:     " ++ show cr ++ "\n"
+    ++ "Funcs:     " ++ show fs ++ "\n"
 
 blankState :: ProgState
-blankState = ProgState Map.empty Map.empty Map.empty
+blankState = ProgState Map.empty Map.empty Map.empty Map.empty
 
 newtype RuntimeError = RuntimeError String
   deriving Show
@@ -116,7 +121,7 @@ addQReg name size = do
   checkNameConflict name (qregs ps)
   let qr   = QReg name 0 size
       qrs' = Map.insert name qr (qregs ps)
-  put $ ProgState (stVecs ps) qrs' (cregs ps)
+  put $ ProgState (stVecs ps) qrs' (cregs ps) (funcs ps)
   addStateVec name size
 
 writeQReg :: Monad m => QReg -> Id -> ProgramM m ()
@@ -125,7 +130,7 @@ writeQReg qreg name = do
   let qrs = qregs ps
   qr <- findId name qrs
   let qrs' = Map.insert name qreg qrs
-  put $ ProgState (stVecs ps) qrs' (cregs ps)
+  put $ ProgState (stVecs ps) qrs' (cregs ps) (funcs ps)
 
 addCReg :: Monad m => Id -> Size -> ProgramM m ()
 addCReg name size = do
@@ -133,7 +138,7 @@ addCReg name size = do
   checkNameConflict name (cregs ps)
   let cr   = mkCReg $ replicate (fromIntegral size) Zero
       crs' = Map.insert name cr (cregs ps)
-  put $ ProgState (stVecs ps) (qregs ps) crs'
+  put $ ProgState (stVecs ps) (qregs ps) crs' (funcs ps)
 
 writeCReg :: Monad m => CReg -> Id -> ProgramM m ()
 writeCReg creg name = do
@@ -142,7 +147,7 @@ writeCReg creg name = do
   cr <- findId name crs
   if crSize creg == crSize cr 
     then let crs' = Map.insert name creg crs
-         in  put $ ProgState (stVecs ps) (qregs ps) crs'
+         in  put $ ProgState (stVecs ps) (qregs ps) crs' (funcs ps)
     else lift . throwE . RuntimeError 
          $ "Mismatched size on overwrite of " ++ name
 
@@ -153,7 +158,7 @@ writeBit bit name i = do
   cr <- findId name crs
   if i < crSize cr 
     then let crs' = Map.insert name (setBit i bit cr) crs
-         in  put $ ProgState (stVecs ps) (qregs ps) crs'
+         in  put $ ProgState (stVecs ps) (qregs ps) crs' (funcs ps)
     else lift . throwE . RuntimeError 
          $ "Index out of bounds when writing to " ++ name
 
@@ -165,20 +170,26 @@ addStateVec name size = do
     Just (SomeNat sn) -> do
       let sv   = SomeSV . mkStateVec' $ singByProxy sn
           svs' = Map.insert name sv (stVecs ps)
-      put $ ProgState svs' (qregs ps) (cregs ps)
+      put $ ProgState svs' (qregs ps) (cregs ps) (funcs ps)
     Nothing -> undefined
 
 writeStateVec :: (Monad m, KnownNat n) => StateVec n -> Id -> ProgramM m ()
 writeStateVec sv name = do
   ps <- get
   let svs' = Map.insert name (SomeSV sv) (stVecs ps)
-  put $ ProgState svs' (qregs ps) (cregs ps)
+  put $ ProgState svs' (qregs ps) (cregs ps) (funcs ps)
 
 deleteStateVec :: Monad m => Id -> ProgramM m ()
 deleteStateVec name = do
   ps <- get
   let svs = stVecs ps
-  put $ ProgState (Map.delete name svs) (qregs ps) (cregs ps)
+  put $ ProgState (Map.delete name svs) (qregs ps) (cregs ps) (funcs ps)
+
+addFunc :: Monad m => CustomGate -> Id -> ProgramM m ()
+addFunc cg name = do
+  ps <- get
+  let funcs' = Map.insert name cg (funcs ps)
+  put $ ProgState (stVecs ps) (qregs ps) (cregs ps) funcs'
 
 checkNameConflict :: Monad m => Id -> Map.Map Id v -> ProgramM m ()
 checkNameConflict name table =

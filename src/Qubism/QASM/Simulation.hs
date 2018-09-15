@@ -41,7 +41,8 @@ runStmt :: MonadRandom m => Stmt -> ProgramM m ()
 runStmt (QRegDecl name size) = addQReg name size
 runStmt (CRegDecl name size) = addCReg name size
 runStmt (GateDecl name params args ops) =
-  lift . throwE $ RuntimeError "not yet implimented"
+  let cg = CustomGate params args ops
+  in  addFunc cg name
 runStmt (QOp op) = case op of
   QUnitary op        -> runStmt $ UOp op
   Measure  argQ argC -> observe argQ argC
@@ -49,7 +50,7 @@ runStmt (QOp op) = case op of
 runStmt (UOp op) = case op of
   U       p1 p2 p3 arg    -> unitary (expr p1) (expr p2) (expr p3) ##> arg
   CX      arg1 arg2       -> cx arg1 arg2
-  Func    name exprs args -> lift . throwE $ RuntimeError "not yet implimented"
+  Func    name exprs args -> customOp name (expr <$> exprs) args
   Barrier args            -> lift . throwE $ RuntimeError "not yet implimented"
 runStmt (Cond name nat op) = do
   ps <- get
@@ -130,6 +131,43 @@ cx arg1 arg2 = do
     (ArgReg _  ) -> 
       let cn k = cnot (finite $ toInteger (i + k)) `applyOn` arg2
       in  mapM_ cn [i..i+s-1]
+
+customOp :: MonadRandom m => Id -> [Double] -> [Arg] -> ProgramM m ()
+customOp name params args = do
+  progSt <- get
+  (CustomGate ps as uops) <- findId name (funcs progSt)
+  let argBinds   = Map.fromList $ zip as args
+      paramBinds = Map.fromList $ zip ps params
+  bound1 <- traverse (bindExpr paramBinds) uops
+  bound2 <- traverse (bindArgs argBinds)   bound1
+  mapM_ runStmt (UOp <$> bound2)
+
+bindArgs :: Monad m => Map.Map Id Arg -> UnitaryOp -> ProgramM m UnitaryOp
+bindArgs map op = case op of
+  U  _ _ _ (ArgBit _ _)    -> lift . throwE $ RuntimeError "invalid"
+  U  a b c (ArgReg name)   -> bind name >>= pure . U a b c
+  CX (ArgReg a) (ArgReg b) -> liftM2 CX (bind a) (bind b)
+  where bind name = 
+          case Map.lookup name map of
+            Just a  -> pure a
+            Nothing -> lift . throwE $ RuntimeError $ "Could not bind " ++ name
+
+bindExpr :: Monad m => Map.Map Id Double -> UnitaryOp -> ProgramM m UnitaryOp
+bindExpr map op = case op of
+  U _ _ _ (ArgBit _ _ ) -> lift . throwE $ RuntimeError "invalid"
+  U a b c (ArgReg name) -> do
+    a' <- bind a
+    b' <- bind b
+    c' <- bind c
+    pure $ U a' b' c' (ArgReg name)
+  _ -> pure $ op
+  where
+    bind (Binary o a b) = liftM2 (Binary o) (bind a) (bind b)
+    bind (Unary  o a)   = liftM  (Unary  o) (bind a)
+    bind (Ident name)   = case Map.lookup name map of
+      Just a  -> pure $ Real a
+      Nothing -> lift . throwE $ RuntimeError $ "Could not bind " ++ name
+    bind a = pure a
 
 expr :: Expr -> Double
 expr e = case e of
