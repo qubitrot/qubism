@@ -100,9 +100,9 @@ fuseQRegs qr1 qr2 = do
         witnessSV ssv2 $ \(sv2 :: StateVec n2) ->
           let sv' = sv1 `tensor` sv2
           in  writeStateVec sv' ssvId'
-      -- Update QReg's                  -- TODO: Check for additional QReg's
-      writeQReg (QReg ssvId' i1 s1) qr1 -- which may refer to a removed 
-      writeQReg (QReg ssvId' i2 s2) qr2 -- StateVec.
+      -- Update QReg's                          -- TODO: Check for additional
+      writeQReg (QReg ssvId' i1         s1) qr1 -- QReg's which may refer to a
+      writeQReg (QReg ssvId' (i1+s1+i2) s2) qr2 -- removed StateVec.
       -- Remove unused StateVecs
       deleteStateVec ssvId1
       deleteStateVec ssvId2
