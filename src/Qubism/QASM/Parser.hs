@@ -33,9 +33,9 @@ data IdType
   | IdExpr
   deriving Show
 
-type IdTable   = Map.Map Id IdType
 type Parser    = ParsecT Void String (State IdTable)
 type PreParser = ParsecT Void String IO
+type IdTable   = Map.Map Id IdType
 
 parseOpenQASM 
   :: String -- ^ Name of source file 
@@ -60,54 +60,45 @@ include = undefined
 
 --------- Lexing --------------------------------------
 
-sc :: Parser ()
+type LexerT = ParsecT Void String
+
+sc :: LexerT m ()
 sc = L.space space1 lineCmnt blockCmnt
   where lineCmnt  = L.skipLineComment  "//"
         blockCmnt = L.skipBlockComment "/*" "*/" -- Not actually part of the
                                                  -- standard, but why not?
-lexeme :: Parser a -> Parser a
+lexeme :: LexerT m a -> LexerT m a
 lexeme = L.lexeme sc
 
-symbol :: String -> Parser String
+symbol :: String -> LexerT m String
 symbol = L.symbol sc
 
-semi :: Parser String
+semi :: LexerT m String
 semi = symbol ";"
 
-comma :: Parser String
+comma :: LexerT m String
 comma = symbol ","
 
-natural :: Parser Natural
+natural :: LexerT m Natural
 natural = lexeme L.decimal
 
-double :: RealFloat a => Parser a
+double :: RealFloat a => LexerT m a
 double =  try (lexeme L.float) 
       <|> fromIntegral <$> natural
 
-newIdent :: Parser String
-newIdent = lexeme . try $ (:) <$> letterChar <*> many alphaNumChar
-
-knownIdent :: Parser String
-knownIdent = do
-  id <- newIdent
-  a  <- lookupId id
-  case a of
-    Just _  -> pure id
-    Nothing -> fail $ "Undeclared identifier: " ++ id
-
-parens :: Parser a -> Parser a
+parens :: LexerT m a -> LexerT m a
 parens = between (symbol "(") (symbol ")")
 
-brackets :: Parser a -> Parser a
+brackets :: LexerT m a -> LexerT m a
 brackets = between (symbol "[") (symbol "]")
 
-curly :: Parser a -> Parser a
+curly :: LexerT m a -> LexerT m a
 curly = between (symbol "{") (symbol "}")
 
-list :: Parser a -> Parser [a]
+list :: LexerT m a -> LexerT m [a]
 list p = sepEndBy p comma
 
-nonempty :: Parser a -> Parser [a]
+nonempty :: LexerT m a -> LexerT m [a]
 nonempty p = sepEndBy1 p comma
 
 ---------- Parsing --------------------------------------
@@ -235,6 +226,17 @@ exprOps =
   , [ InfixL (Binary Add  <$ symbol "+"   )
     , InfixL (Binary Sub  <$ symbol "-"   ) ]
   ]
+
+newIdent :: Parser String
+newIdent = lexeme . try $ (:) <$> letterChar <*> many alphaNumChar
+
+knownIdent :: Parser String
+knownIdent = do
+  id <- newIdent
+  a  <- lookupId id
+  case a of
+    Just _  -> pure id
+    Nothing -> fail $ "Undeclared identifier: " ++ id
 
 ---------- Utilities -----------
 
