@@ -35,8 +35,15 @@ data IdType
   | IdExpr
   deriving Show
 
-type Parser    = ParsecT Void String (State IdTable)
-type PreParser = ParsecT Void String IO
+data Failure
+  = IncludeFail String
+  deriving (Eq, Ord, Show)
+
+instance ShowErrorComponent Failure where
+  showErrorComponent (IncludeFail msg) = "Cannot include: " ++ msg
+
+type Parser    = ParsecT Failure String (State IdTable)
+type PreParser = ParsecT Failure String IO
 type IdTable   = Map.Map Id IdType
 
 parseOpenQASM 
@@ -72,7 +79,7 @@ include = do
 
 --------- Lexing --------------------------------------
 
-type LexerT = ParsecT Void String
+type LexerT = ParsecT Failure String
 
 sc :: LexerT m ()
 sc = L.space space1 lineCmnt blockCmnt
