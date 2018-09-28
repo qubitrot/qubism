@@ -9,7 +9,9 @@ Maintainer  : keith@qubitrot.org
 {-# LANGUAGE LambdaCase #-}
 
 module Qubism.QASM.Parser 
-  ( parseOpenQASM )
+  ( parseOpenQASM
+  , preparse
+  , passthrough )
   where
 
 import Data.Void
@@ -40,23 +42,33 @@ type IdTable   = Map.Map Id IdType
 parseOpenQASM 
   :: String -- ^ Name of source file 
   -> String -- ^ Input for parser
-  -> Either String Program 
-parseOpenQASM file input =
-  let parsed = runParserT mainprogram file input
-  in  case runState parsed Map.empty of
-        (Left  err,  _) -> Left $ parseErrorPretty err
-        (Right prog, _) -> Right  prog
+  -> IO (Either String Program)
+parseOpenQASM file input = do
+  runParserT preparse file input >>= \case
+    Left  err -> undefined
+    Right pp  -> do
+      let parsed = runParserT mainprogram file pp
+      case runState parsed Map.empty of
+        (Left  err,  _) -> pure . Left  $ parseErrorPretty err
+        (Right prog, _) -> pure . Right $ prog
 
 -- | The preparser phase only handles includes at the moment, but may be
--- expanded later.
+-- expanded later. Screws up line numbering. TODO.
 preparse :: PreParser String
-preparse = mconcat <$> manyTill (include <|> passthrough) atEnd
+preparse = mconcat <$> manyTill (include <|> passthrough) eof
 
 passthrough :: PreParser String
-passthrough = undefined
+passthrough = manyTill anyChar done
+  where done = eof <|> lookAhead (symbol "include" *> pure ())
 
 include :: PreParser String
-include = undefined
+include = do
+  symbol "include"
+  file    <- quotes filepath
+  source  <- lift $ readFile file
+  lift $ runParserT preparse file source >>= \case
+    Left  err -> undefined
+    Right out -> pure out
 
 --------- Lexing --------------------------------------
 
@@ -95,11 +107,19 @@ brackets = between (symbol "[") (symbol "]")
 curly :: LexerT m a -> LexerT m a
 curly = between (symbol "{") (symbol "}")
 
+quotes :: LexerT m a -> LexerT m a
+quotes = between (symbol "\"") (symbol "\"")
+
 list :: LexerT m a -> LexerT m [a]
 list p = sepEndBy p comma
 
 nonempty :: LexerT m a -> LexerT m [a]
 nonempty p = sepEndBy1 p comma
+
+filepath :: LexerT m String
+filepath = many $  alphaNumChar
+               <|> char '.' 
+               <|> char '/'
 
 ---------- Parsing --------------------------------------
 

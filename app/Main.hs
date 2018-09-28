@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Main where
 
 import System.Environment
@@ -9,8 +11,8 @@ main :: IO ()
 main = do
   file   <- head <$> getArgs
   source <- readFile file 
-  case parseOpenQASM file source of
-    Left  err -> putStr err
+  parseOpenQASM file source >>= \case
+    Left  err  -> putStr err
     Right prog -> do
       st <- runProgram prog
       case st of 
