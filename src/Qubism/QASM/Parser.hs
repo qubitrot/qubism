@@ -33,8 +33,9 @@ data IdType
   | IdExpr
   deriving Show
 
-type IdTable = Map.Map Id IdType
-type Parser  = ParsecT Void String (State IdTable)
+type IdTable   = Map.Map Id IdType
+type Parser    = ParsecT Void String (State IdTable)
+type PreParser = ParsecT Void String IO
 
 parseOpenQASM 
   :: String -- ^ Name of source file 
@@ -45,6 +46,17 @@ parseOpenQASM file input =
   in  case runState parsed Map.empty of
         (Left  err,  _) -> Left $ parseErrorPretty err
         (Right prog, _) -> Right  prog
+
+-- | The preparser phase only handles includes at the moment, but may be
+-- expanded later.
+preparse :: PreParser String
+preparse = mconcat <$> manyTill (include <|> passthrough) atEnd
+
+passthrough :: PreParser String
+passthrough = undefined
+
+include :: PreParser String
+include = undefined
 
 --------- Lexing --------------------------------------
 
