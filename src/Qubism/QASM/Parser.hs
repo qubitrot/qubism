@@ -19,6 +19,8 @@ import Numeric.Natural
 import Control.Monad
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Class
+import Control.Exception hiding (try)
+import System.IO.Error
 import qualified Data.Map as Map
 
 import           Text.Megaparsec hiding (State)
@@ -40,7 +42,8 @@ data Failure
   deriving (Eq, Ord, Show)
 
 instance ShowErrorComponent Failure where
-  showErrorComponent (IncludeFail msg) = "Cannot include: " ++ msg
+  showErrorComponent (IncludeFail file) = 
+    "Cannot include: " ++ file ++ " does not exist"
 
 type Parser    = ParsecT Failure String (State IdTable)
 type PreParser = ParsecT Failure String IO
@@ -52,7 +55,7 @@ parseOpenQASM
   -> IO (Either String Program)
 parseOpenQASM file input = do
   runParserT preparse file input >>= \case
-    Left  err -> undefined
+    Left  err -> pure . Left  $ parseErrorPretty err
     Right pp  -> do
       let parsed = runParserT mainprogram file pp
       case runState parsed Map.empty of
@@ -71,11 +74,17 @@ passthrough = manyTill anyChar done
 include :: PreParser String
 include = do
   symbol "include"
-  file    <- quotes filepath
-  source  <- lift $ readFile file
+  file   <- quotes filepath
+  source <- tryReadFile file
   lift $ runParserT preparse file source >>= \case
-    Left  err -> undefined
-    Right out -> pure out
+    Left  e -> undefined
+    Right s -> pure s
+    
+tryReadFile :: FilePath -> PreParser String
+tryReadFile file = do
+  r <- lift $ tryJust (guard . isDoesNotExistError) (readFile file)
+  case r of Right src -> pure src
+            Left  e   -> customFailure . IncludeFail $ file
 
 --------- Lexing --------------------------------------
 
