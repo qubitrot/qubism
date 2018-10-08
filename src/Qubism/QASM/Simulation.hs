@@ -14,10 +14,10 @@ Maintainer  : keith@qubitrot.org
 
 module Qubism.QASM.Simulation where
 
+
 -- For dependent typing
 import GHC.TypeLits
 import Data.Singletons
-import Data.Singletons.TypeLits
 import Data.Finite
 
 import qualified Data.Map.Strict as Map
@@ -44,7 +44,7 @@ runStmt (GateDecl name params args ops) =
   let cg = CustomGate params args ops
   in  addFunc cg name
 runStmt (QOp op) = case op of
-  QUnitary op        -> runStmt $ UOp op
+  QUnitary uop       -> runStmt $ UOp uop
   Measure  argQ argC -> observe argQ argC
   Reset    arg       -> lift . throwE $ RuntimeError "not yet implimented"
 runStmt (UOp op) = case op of
@@ -76,7 +76,7 @@ applyOn
   -> Arg -> ProgramM m ()
 applyOn g arg = do
   ps <- get
-  (QReg idSV i s) <- findId (argId arg) (qregs ps)
+  (QReg idSV i _) <- findId (argId arg) (qregs ps)
   ssv             <- findId idSV (stVecs ps)
   witnessSV ssv $ \sv ->
     let ix j = finite $ toInteger (j+i)
@@ -116,14 +116,14 @@ observe argQ argC = do
       mkCReg <$> traverse mq [i..i+s-1]
   case argC of
     ArgBit name k -> writeBit (crIndex bits 0) name k
-    ArgReg name   -> writeCReg bits (argId argC)
+    ArgReg _      -> writeCReg bits (argId argC)
 
 cx :: Monad m => Arg -> Arg -> ProgramM m ()
 cx arg1 arg2 = do
   ps <- get
   let qr1 = argId arg1
       qr2 = argId arg2
-  idSV <- fuseQRegs qr1 qr2 -- NOP if qr1 and qr2 are supported by the 
+  _ <- fuseQRegs qr1 qr2 -- NOP if qr1 and qr2 are supported by the 
   (QReg _ i s) <- findId qr1 (qregs ps) -- same underlying StateVec.
   case arg1 of 
     (ArgBit _ k) -> 
@@ -143,17 +143,17 @@ customOp name params args = do
   mapM_ runStmt (UOp <$> bound2)
 
 bindArgs :: Monad m => Map.Map Id Arg -> UnitaryOp -> ProgramM m UnitaryOp
-bindArgs map op = case op of
+bindArgs table op = case op of
   U  _ _ _ (ArgBit _ _)    -> lift . throwE $ RuntimeError "invalid"
   U  a b c (ArgReg name)   -> bind name >>= pure . U a b c
   CX (ArgReg a) (ArgReg b) -> liftM2 CX (bind a) (bind b)
   where bind name = 
-          case Map.lookup name map of
+          case Map.lookup name table of
             Just a  -> pure a
             Nothing -> lift . throwE $ RuntimeError $ "Could not bind " ++ name
 
 bindExpr :: Monad m => Map.Map Id Double -> UnitaryOp -> ProgramM m UnitaryOp
-bindExpr map op = case op of
+bindExpr table op = case op of
   U _ _ _ (ArgBit _ _ ) -> lift . throwE $ RuntimeError "invalid"
   U a b c (ArgReg name) -> do
     a' <- bind a
@@ -164,7 +164,7 @@ bindExpr map op = case op of
   where
     bind (Binary o a b) = liftM2 (Binary o) (bind a) (bind b)
     bind (Unary  o a)   = liftM  (Unary  o) (bind a)
-    bind (Ident name)   = case Map.lookup name map of
+    bind (Ident name)   = case Map.lookup name table of
       Just a  -> pure $ Real a
       Nothing -> lift . throwE $ RuntimeError $ "Could not bind " ++ name
     bind a = pure a

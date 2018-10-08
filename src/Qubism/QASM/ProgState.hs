@@ -19,8 +19,6 @@ module Qubism.QASM.ProgState where
 -- For dependent typing
 import GHC.TypeLits
 import Data.Singletons
-import Data.Singletons.TypeLits
-import Data.Finite
 
 import qualified Data.Map.Strict as Map
 import Control.Monad.Trans.State.Strict
@@ -128,7 +126,7 @@ writeQReg :: Monad m => QReg -> Id -> ProgramM m ()
 writeQReg qreg name = do
   ps <- get
   let qrs = qregs ps
-  qr <- findId name qrs
+  _  <- findId name qrs --Just to ensure it exists
   let qrs' = Map.insert name qreg qrs
   put $ ProgState (stVecs ps) qrs' (cregs ps) (funcs ps)
 
