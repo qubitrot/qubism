@@ -208,7 +208,7 @@ qop = measure <|> reset <|>unitary
     unitary = QUnitary <$> uop
 
 uop :: Parser UnitaryOp
-uop = u <|> cx <|> func <|> barrier
+uop = u <|> cx <|> barrier <|> func
   where
     u = do
       _   <- symbol "U" *> symbol "("
@@ -223,15 +223,15 @@ uop = u <|> cx <|> func <|> barrier
       _    <- comma
       arg2 <- argument
       pure $ CX arg1 arg2
+    barrier = do
+      _    <- symbol "barrier"
+      args <- list argument
+      pure $ Barrier args
     func = do
       ident  <- knownIdent
       params <- option [] $ parens (list expr)
       args   <- list argument
       pure $ Func ident params args
-    barrier = do
-      _    <- symbol "barrier"
-      args <- list argument
-      pure $ Barrier args
 
 cond :: Parser Stmt
 cond = do

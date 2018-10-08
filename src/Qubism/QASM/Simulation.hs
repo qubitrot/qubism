@@ -51,7 +51,7 @@ runStmt (UOp op) = case op of
   U       p1 p2 p3 arg    -> unitary (expr p1) (expr p2) (expr p3) ##> arg
   CX      arg1 arg2       -> cx arg1 arg2
   Func    name exprs args -> customOp name (expr <$> exprs) args
-  Barrier args            -> lift . throwE $ RuntimeError "not yet implemented"
+  Barrier _               -> pure ()
 runStmt (Cond name nat op) = do
   ps <- get
   cr <- findId name (cregs ps)
@@ -167,6 +167,7 @@ bindArgs table op = case op of
   U  _ _ _ (ArgBit _ _)    -> lift . throwE $ RuntimeError "invalid"
   U  a b c (ArgReg name)   -> bind name >>= pure . U a b c
   CX (ArgReg a) (ArgReg b) -> liftM2 CX (bind a) (bind b)
+  _                        -> pure op
   where bind name = 
           case Map.lookup name table of
             Just a  -> pure a
@@ -180,7 +181,7 @@ bindExpr table op = case op of
     b' <- bind b
     c' <- bind c
     pure $ U a' b' c' (ArgReg name)
-  _ -> pure $ op
+  _ -> pure op
   where
     bind (Binary o a b) = liftM2 (Binary o) (bind a) (bind b)
     bind (Unary  o a)   = liftM  (Unary  o) (bind a)
