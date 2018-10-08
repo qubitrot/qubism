@@ -67,11 +67,15 @@ passthrough = manyTill anySingle done
 include :: PreParser String
 include = do
   symbol "include"
-  file   <- quotes filepath
+  file   <- quotes filepath <* semi
   source <- tryReadFile file
-  lift $ runParserT preparse file source >>= \case
-    Left  e -> undefined
-    Right s -> pure s
+  remain <- getInput
+  offset <- getOffset
+  setInput  source
+  pparse <- preparse
+  setInput  remain
+  setOffset offset
+  pure pparse
     
 tryReadFile :: FilePath -> PreParser String
 tryReadFile file = do
