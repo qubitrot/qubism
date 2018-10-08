@@ -46,12 +46,12 @@ runStmt (GateDecl name params args ops) =
 runStmt (QOp op) = case op of
   QUnitary uop       -> runStmt $ UOp uop
   Measure  argQ argC -> observe argQ argC
-  Reset    arg       -> lift . throwE $ RuntimeError "not yet implimented"
+  Reset    arg       -> lift . throwE $ RuntimeError "not yet implemented"
 runStmt (UOp op) = case op of
   U       p1 p2 p3 arg    -> unitary (expr p1) (expr p2) (expr p3) ##> arg
   CX      arg1 arg2       -> cx arg1 arg2
   Func    name exprs args -> customOp name (expr <$> exprs) args
-  Barrier args            -> lift . throwE $ RuntimeError "not yet implimented"
+  Barrier args            -> lift . throwE $ RuntimeError "not yet implemented"
 runStmt (Cond name nat op) = do
   ps <- get
   cr <- findId name (cregs ps)
@@ -59,30 +59,48 @@ runStmt (Cond name nat op) = do
 
 -- | Apply a single qubit gate with an argument
 (##>) :: Monad m => QGate 1 -> Arg -> ProgramM m ()
-(##>) g arg = do
-  ps <- get
-  (QReg idSV i s) <- findId (argId arg) (qregs ps)
-  ssv             <- findId idSV (stVecs ps)
-  witnessSV ssv $ \sv ->
-    let ix j = finite $ toInteger (j+i)
-        sv'  = case arg of
-          (ArgBit _ k) -> onJust  (ix k)           g #> sv
-          (ArgReg _  ) -> onRange (ix 0) (ix(s-1)) g #> sv
-    in  writeStateVec sv' idSV
+(##>) g arg = case arg of
+  (ArgBit qr k) -> withIndex  (flip onJust g) qr k
+  (ArgReg qr  ) -> do
+    qrs <- gets qregs
+    (QReg _ _ s) <- findId qr qrs
+    withIndex2 (\i j -> onRange i j g) qr 0 qr (s-1)
 
-applyOn 
+-- | Apply an index-dependant gate to a QReg
+withIndex 
   :: Monad m 
   => (forall n. KnownNat n => Finite n -> QGate n) 
-  -> Arg -> ProgramM m ()
-applyOn g arg = do
-  ps <- get
-  (QReg idSV i _) <- findId (argId arg) (qregs ps)
+  -> Id -- ^ QReg identifier
+  -> Index
+  -> ProgramM m ()
+withIndex g qr i = do
+  ps              <- get
+  (QReg idSV j _) <- findId qr   (qregs ps)
   ssv             <- findId idSV (stVecs ps)
   witnessSV ssv $ \sv ->
-    let ix j = finite $ toInteger (j+i)
-        sv'  = case arg of
-          (ArgBit _ k) -> g (ix k) #> sv
-          (ArgReg _  ) -> undefined
+    let idx = finite . toInteger $ j+i
+        sv' = g idx #> sv
+    in  writeStateVec sv' qr
+
+-- | Apply an gate dependant on 2 indicies, potentially across differet QRegs.
+withIndex2
+  :: Monad m 
+  => (forall n. KnownNat n => Finite n -> Finite n -> QGate n) 
+  -> Id    -- ^ QReg 1 identifier
+  -> Index -- ^ QReg 1 index
+  -> Id    -- ^ QReg 2 identifier
+  -> Index -- ^ QReg 2 index
+  -> ProgramM m ()
+withIndex2 g qr1 i qr2 j = do
+  ps   <- get
+  idSV <- fuseQRegs qr1 qr2       -- We must fuse because this is potentially
+  ssv  <- findId idSV (stVecs ps) -- an entangling operation.
+  (QReg _ s1 _) <- findId qr1 (qregs ps)
+  (QReg _ s2 _) <- findId qr2 (qregs ps)
+  witnessSV ssv $ \sv ->
+    let idx1 = finite . toInteger $ s1+i
+        idx2 = finite . toInteger $ s2+j
+        sv'  = g idx1 idx2 #> sv
     in  writeStateVec sv' idSV
 
 -- | Lift a stateful, indexed, single qubit function into the ProgramM
@@ -119,18 +137,20 @@ observe argQ argC = do
     ArgReg _      -> writeCReg bits (argId argC)
 
 cx :: Monad m => Arg -> Arg -> ProgramM m ()
-cx arg1 arg2 = do
-  ps <- get
-  let qr1 = argId arg1
-      qr2 = argId arg2
-  _ <- fuseQRegs qr1 qr2 -- NOP if qr1 and qr2 are supported by the 
-  (QReg _ i s) <- findId qr1 (qregs ps) -- same underlying StateVec.
-  case arg1 of 
-    (ArgBit _ k) -> 
-      cnot (finite $ toInteger (i + k)) `applyOn` arg2 
-    (ArgReg _  ) -> 
-      let cn k = cnot (finite $ toInteger (i + k)) `applyOn` arg2
-      in  mapM_ cn [i..i+s-1]
+cx arg1 arg2 = 
+  let over qr f = findQRSize qr >>= \s -> mapM_ f [0..(s-1)] 
+  in case arg1 of
+    (ArgBit   qr1 i) -> case arg2 of
+      (ArgBit qr2 j) -> withIndex2 cnot qr1 i qr2 j
+      (ArgReg qr2  ) -> over qr2 $ withIndex2 cnot qr1 i qr2
+    (ArgReg   qr1  ) -> case arg2 of 
+      (ArgBit qr2 j) -> over qr1 $ \i -> withIndex2 cnot qr1 i qr2 j
+      (ArgReg qr2  ) -> do
+        s1 <- findQRSize qr1
+        s2 <- findQRSize qr2
+        if s1 == s2 
+          then mapM_ (\i -> withIndex2 cnot qr1 i qr2 i) [0..(s1-1)]
+          else lift . throwE $ RuntimeError "size mismatch"
 
 customOp :: MonadRandom m => Id -> [Double] -> [Arg] -> ProgramM m ()
 customOp name params args = do

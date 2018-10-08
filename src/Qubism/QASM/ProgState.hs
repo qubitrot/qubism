@@ -33,11 +33,11 @@ import Qubism.QASM.AST
 -- | This datatype encapsulates the concept of QReg's in QASM, which cannot
 -- be considered independant. A QReg is a portion (perhaps the whole thing)
 -- of a StateVec that is used in a calculation.
-data QReg = QReg
-  Id      -- ^ Identifier of the StateVec representing the full state
-  Natural -- ^ Index of the first qubit
-  Natural -- ^ Size of the register
-  deriving Show
+data QReg = QReg {
+  qrId    :: Id,      -- ^ Identifier of the StateVec holding the full state
+  qrStart :: Natural, -- ^ Index of the first qubit
+  qrSize  :: Natural  -- ^ Size of the register
+  } deriving Show
 
 data SomeStateVec = forall n . KnownNat n => SomeSV (StateVec n)
 
@@ -59,7 +59,7 @@ instance Show ProgState where
     ++ "StateVecs: " ++ show sv ++ "\n"
     ++ "QRegs:     " ++ show qr ++ "\n"
     ++ "CRegs:     " ++ show cr ++ "\n"
-    ++ "Funcs:     " ++ show fs ++ "\n"
+--  ++ "Funcs:     " ++ show fs ++ "\n"
 
 blankState :: ProgState
 blankState = ProgState Map.empty Map.empty Map.empty Map.empty
@@ -194,3 +194,9 @@ checkNameConflict name table =
   if name `Map.member` table
     then lift . throwE . RuntimeError $ "Redeclaration of " ++ name
     else pure ()
+
+findQRSize :: Monad m => Id -> ProgramM m Natural
+findQRSize qr = do
+  qrs <- gets qregs
+  (QReg _ _ s) <- findId qr qrs
+  pure s
