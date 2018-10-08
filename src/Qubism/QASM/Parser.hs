@@ -14,26 +14,18 @@ module Qubism.QASM.Parser
 
 import Data.Void
 import Numeric.Natural
-import Control.Monad
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Class
 import qualified Data.Map as Map
 
 import           Text.Megaparsec hiding (State)
 import           Text.Megaparsec.Char
-import           Text.Megaparsec.Expr
+import           Control.Monad.Combinators.Expr 
 import qualified Text.Megaparsec.Char.Lexer as L
 
 import Qubism.QASM.AST
 
-data IdType 
-  = IdQReg Size
-  | IdCReg Size
-  | IdGate IdTable
-  | IdExpr
-  deriving Show
-
-type IdTable = Map.Map Id IdType
+type IdTable = Map.Map Id SourcePos
 type Parser  = ParsecT Void String (State IdTable)
 
 parseOpenQASM 
@@ -43,7 +35,7 @@ parseOpenQASM
 parseOpenQASM file input =
   let parsed = runParserT mainprogram file input
   in  case runState parsed Map.empty of
-        (Left  err,  _) -> Left $ parseErrorPretty err
+        (Left  err,  _) -> Left $ errorBundlePretty err
         (Right prog, _) -> Right  prog
 
 --------- Lexing --------------------------------------
@@ -72,16 +64,23 @@ double :: RealFloat a => Parser a
 double =  try (lexeme L.float) 
       <|> fromIntegral <$> natural
 
+identifier :: Parser String
+identifier = lexeme . try $ 
+  (:) <$> letterChar <*> many alphaNumChar
+
 newIdent :: Parser String
-newIdent = lexeme . try $ (:) <$> letterChar <*> many alphaNumChar
+newIdent = do
+  i <- identifier
+  insertId i =<< getSourcePos
+  pure i
 
 knownIdent :: Parser String
 knownIdent = do
-  id <- newIdent
-  a  <- lookupId id
+  i <- identifier
+  a <- lookupId i
   case a of
-    Just _  -> pure id
-    Nothing -> fail $ "Undeclared identifier: " ++ id
+    Just _  -> pure i
+    Nothing -> fail $ "Undeclared identifier: " ++ i
 
 parens :: Parser a -> Parser a
 parens = between (symbol "(") (symbol ")")
@@ -122,54 +121,51 @@ regDecl = do
   ident  <- newIdent
   size   <- brackets natural
   case prefix of
-    "qreg" -> do insertId ident $ IdQReg size
-                 pure $ QRegDecl ident size
-    "creg" -> do insertId ident $ IdCReg size
-                 pure $ CRegDecl ident size
+    "qreg" -> pure $ QRegDecl ident size
+    "creg" -> pure $ CRegDecl ident size
 
 gateDecl :: Parser Stmt
 gateDecl = do
-  symbol "gate"
-  ident  <- newIdent
-  params <- option [] $ parens (list newIdent)
-  args   <- nonempty newIdent
-  traverse (flip insertId (IdQReg 1)) args   -- temporarily declare these ids
-  traverse (flip insertId  IdExpr   ) params -- in global scope to check for
-  body   <- symbol "{" *> many (uop <* semi) -- conflicts or undeclared ids.
-  traverse deleteId args                     -- This unfortunately prevents
-  traverse deleteId params                   -- name shadowing. There's 
-  pure $ GateDecl ident params args body     -- probably a better way.
+  ident  <- symbol "gate" *> newIdent
+  gtable <- lift get
+  params <- option [] $ parens (list shadowIdent)
+  args   <- nonempty shadowIdent
+  body   <- symbol "{" *> many (uop <* semi)
+  lift . put $ gtable
+  pure $ GateDecl ident params args body    
+  where
+    shadowIdent = do
+      i  <- identifier
+      sp <- getSourcePos
+      lift . modify $ Map.insert i sp
+      pure i
 
 qop :: Parser QuantumOp
 qop = measure <|> reset <|>unitary
   where 
     measure = do
-      symbol "measure"
-      source <- argument
-      symbol "->"
-      target <- argument
-      pure $ Measure source target
+      src <- symbol "measure" *> argument
+      tgt <- symbol "->"      *> argument
+      pure $ Measure src tgt
     reset = do
-      symbol "reset"
-      target <- argument
-      pure $ Reset target
+      tgt <- symbol "reset" *> argument
+      pure $ Reset tgt
     unitary = QUnitary <$> uop
 
 uop :: Parser UnitaryOp
 uop = u <|> cx <|> func <|> barrier
   where
     u = do
-      symbol "U"
-      symbol "("
+      _   <- symbol "U" *> symbol "("
       p1  <- expr <* symbol ","
       p2  <- expr <* symbol ","
       p3  <- expr <* symbol ")"
       arg <- argument
       pure $ U p1 p2 p3 arg
     cx = do
-      symbol "CX"
+      _    <- symbol "CX"
       arg1 <- argument
-      comma
+      _    <- comma
       arg2 <- argument
       pure $ CX arg1 arg2
     func = do
@@ -178,19 +174,19 @@ uop = u <|> cx <|> func <|> barrier
       args   <- list argument
       pure $ Func ident params args
     barrier = do
-      symbol "barrier"
+      _    <- symbol "barrier"
       args <- list argument
       pure $ Barrier args
 
 cond :: Parser Stmt
 cond = do
-  symbol "if" *> symbol "("
-  ident <- knownIdent
-  symbol "=="
-  num <- natural
-  symbol ")"
-  op  <- qop
-  pure $ Cond ident num op
+  _ <- symbol "if" *> symbol "("
+  i <- knownIdent
+  _ <- symbol "=="
+  n <- natural
+  _ <- symbol ")"
+  o <- qop
+  pure $ Cond i n o
 
 argument :: Parser Arg
 argument = do
@@ -225,13 +221,13 @@ exprOps =
 
 ---------- Utilities -----------
 
-lookupId :: Id -> Parser (Maybe IdType)
-lookupId id = lift . gets $ Map.lookup id
+lookupId :: Id -> Parser (Maybe SourcePos)
+lookupId i = lift . gets $ Map.lookup i
 
-insertId :: Id -> IdType -> Parser ()
-insertId id idtype = lookupId id >>= \case
-    Just _  -> fail $ "Redeclaration of " ++ id
-    Nothing -> lift . modify $ Map.insert id idtype
+insertId :: Id -> SourcePos -> Parser ()
+insertId i sp = lookupId i >>= \case
+    Just _  -> fail $ "Redeclaration of " ++ i
+    Nothing -> lift . modify $ Map.insert i sp
 
 deleteId :: Id -> Parser ()
-deleteId id = lift . modify $ Map.delete id
+deleteId i = lift . modify $ Map.delete i
