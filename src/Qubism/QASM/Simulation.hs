@@ -14,7 +14,6 @@ Maintainer  : keith@qubitrot.org
 
 module Qubism.QASM.Simulation where
 
-
 -- For dependent typing
 import GHC.TypeLits
 import Data.Singletons
@@ -46,7 +45,7 @@ runStmt (GateDecl name params args ops) =
 runStmt (QOp op) = case op of
   QUnitary uop       -> runStmt $ UOp uop
   Measure  argQ argC -> observe argQ argC
-  Reset    arg       -> lift . throwE $ RuntimeError "not yet implemented"
+  Reset    arg       -> runtimeE "not yet implemented"
 runStmt (UOp op) = case op of
   U       p1 p2 p3 arg    -> unitary (expr p1) (expr p2) (expr p3) ##> arg
   CX      arg1 arg2       -> cx arg1 arg2
@@ -150,7 +149,8 @@ cx arg1 arg2 =
         s2 <- findQRSize qr2
         if s1 == s2 
           then mapM_ (\i -> withIndex2 cnot qr1 i qr2 i) [0..(s1-1)]
-          else lift . throwE $ RuntimeError "size mismatch"
+          else runtimeE $ "QRegs of different sizes supplied to CX:"
+                       ++ qr1 ++ " " ++ qr2;
 
 customOp :: MonadRandom m => Id -> [Double] -> [Arg] -> ProgramM m ()
 customOp name params args = do
@@ -164,18 +164,18 @@ customOp name params args = do
 
 bindArgs :: Monad m => Map.Map Id Arg -> UnitaryOp -> ProgramM m UnitaryOp
 bindArgs table op = case op of
-  U  _ _ _ (ArgBit _ _)    -> lift . throwE $ RuntimeError "invalid"
+  U  _ _ _ (ArgBit _ _)    -> runtimeE "Invalid arg bind"
   U  a b c (ArgReg name)   -> bind name >>= pure . U a b c
   CX (ArgReg a) (ArgReg b) -> liftM2 CX (bind a) (bind b)
   _                        -> pure op
   where bind name = 
           case Map.lookup name table of
             Just a  -> pure a
-            Nothing -> lift . throwE $ RuntimeError $ "Could not bind " ++ name
+            Nothing -> runtimeE $ "Could not bind arg " ++ name
 
 bindExpr :: Monad m => Map.Map Id Double -> UnitaryOp -> ProgramM m UnitaryOp
 bindExpr table op = case op of
-  U _ _ _ (ArgBit _ _ ) -> lift . throwE $ RuntimeError "invalid"
+  U _ _ _ (ArgBit _ _ ) -> runtimeE "invalid expr bind"
   U a b c (ArgReg name) -> do
     a' <- bind a
     b' <- bind b
@@ -187,7 +187,7 @@ bindExpr table op = case op of
     bind (Unary  o a)   = liftM  (Unary  o) (bind a)
     bind (Ident name)   = case Map.lookup name table of
       Just a  -> pure $ Real a
-      Nothing -> lift . throwE $ RuntimeError $ "Could not bind " ++ name
+      Nothing -> runtimeE $ "Could not bind expr " ++ name
     bind a = pure a
 
 expr :: Expr -> Double

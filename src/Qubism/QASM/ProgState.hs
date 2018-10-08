@@ -55,7 +55,7 @@ data ProgState = ProgState
   }
 
 instance Show ProgState where
-  show (ProgState sv qr cr fs) = "ProgState_________________\n"
+  show (ProgState sv qr cr _) = "ProgState_________________\n"
     ++ "StateVecs: " ++ show sv ++ "\n"
     ++ "QRegs:     " ++ show qr ++ "\n"
     ++ "CRegs:     " ++ show cr ++ "\n"
@@ -68,6 +68,9 @@ newtype RuntimeError = RuntimeError String
   deriving Show
 
 type ProgramM m = StateT ProgState (ExceptT RuntimeError m)
+
+runtimeE :: Monad m => String -> ProgramM m a
+runtimeE = lift . throwE . RuntimeError
 
 witnessSV 
   :: SomeStateVec
