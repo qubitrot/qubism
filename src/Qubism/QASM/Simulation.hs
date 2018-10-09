@@ -11,6 +11,7 @@ Maintainer  : keith@qubitrot.org
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE LambdaCase          #-}
 
 module Qubism.QASM.Simulation where
 
@@ -20,6 +21,7 @@ import Data.Singletons
 import Data.Finite
 
 import qualified Data.Map.Strict as Map
+import           Data.Map.Strict (Map)
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Except
 import Control.Monad.Random
@@ -59,7 +61,7 @@ runStmt (Cond name nat op) = do
 -- | Apply a single qubit gate with an argument
 (##>) :: Monad m => QGate 1 -> Arg -> ProgramM m ()
 (##>) g arg = case arg of
-  (ArgBit qr k) -> withIndex  (flip onJust g) qr k
+  (ArgBit qr k) -> withIndex  (`onJust` g) qr k
   (ArgReg qr  ) -> do
     qrs <- gets qregs
     (QReg _ _ s) <- findId qr qrs
@@ -139,17 +141,17 @@ cx :: Monad m => Arg -> Arg -> ProgramM m ()
 cx arg1 arg2 = 
   let over qr f = findQRSize qr >>= \s -> mapM_ f [0..(s-1)] 
   in case arg1 of
-    (ArgBit   qr1 i) -> case arg2 of
-      (ArgBit qr2 j) -> withIndex2 cnot qr1 i qr2 j
-      (ArgReg qr2  ) -> over qr2 $ withIndex2 cnot qr1 i qr2
-    (ArgReg   qr1  ) -> case arg2 of 
-      (ArgBit qr2 j) -> over qr1 $ \i -> withIndex2 cnot qr1 i qr2 j
-      (ArgReg qr2  ) -> do
+    ArgBit qr1 i -> case arg2 of
+      ArgBit qr2 j -> withIndex2 cnot qr1 i qr2 j
+      ArgReg qr2   -> over qr2 $ withIndex2 cnot qr1 i qr2
+    ArgReg qr1   -> case arg2 of 
+      ArgBit qr2 j -> over qr1 $ \i -> withIndex2 cnot qr1 i qr2 j
+      ArgReg qr2   -> do
         s1 <- findQRSize qr1
         s2 <- findQRSize qr2
         if s1 == s2 
           then mapM_ (\i -> withIndex2 cnot qr1 i qr2 i) [0..(s1-1)]
-          else runtimeE $ "QRegs of different sizes supplied to CX:"
+          else runtimeE $ "QRegs of different sizes supplied to CX: "
                        ++ qr1 ++ " " ++ qr2;
 
 customOp :: MonadRandom m => Id -> [Double] -> [Arg] -> ProgramM m ()
@@ -158,37 +160,32 @@ customOp name params args = do
   (CustomGate ps as uops) <- findId name (funcs progSt)
   let argBinds   = Map.fromList $ zip as args
       paramBinds = Map.fromList $ zip ps params
-  bound1 <- traverse (bindExpr paramBinds) uops
-  bound2 <- traverse (bindArgs argBinds)   bound1
-  mapM_ runStmt (UOp <$> bound2)
+  uop <- traverse (bindNames paramBinds argBinds) uops
+  mapM_ runStmt (UOp <$> uop)
 
-bindArgs :: Monad m => Map.Map Id Arg -> UnitaryOp -> ProgramM m UnitaryOp
-bindArgs table op = case op of
-  U  _ _ _ (ArgBit _ _)    -> runtimeE "Invalid arg bind"
-  U  a b c (ArgReg name)   -> bind name >>= pure . U a b c
-  CX (ArgReg a) (ArgReg b) -> liftM2 CX (bind a) (bind b)
-  _                        -> pure op
-  where bind name = 
-          case Map.lookup name table of
-            Just a  -> pure a
-            Nothing -> runtimeE $ "Could not bind arg " ++ name
-
-bindExpr :: Monad m => Map.Map Id Double -> UnitaryOp -> ProgramM m UnitaryOp
-bindExpr table op = case op of
-  U _ _ _ (ArgBit _ _ ) -> runtimeE "invalid expr bind"
-  U a b c (ArgReg name) -> do
-    a' <- bind a
-    b' <- bind b
-    c' <- bind c
-    pure $ U a' b' c' (ArgReg name)
-  _ -> pure op
+bindNames :: Monad m 
+  => Map Id Double 
+  -> Map Id Arg 
+  -> UnitaryOp 
+  -> ProgramM m UnitaryOp
+bindNames etable atable op = case op of
+  U  a b c d -> liftM4 U  (bindE a) (bindE b) (bindE c) (bindA d)
+  CX a b     -> liftM2 CX (bindA a) (bindA b)
+  Barrier as -> Barrier <$> traverse bindA as
+  Func i e a -> liftM2 (Func i) (traverse bindE e) (traverse bindA a)
   where
-    bind (Binary o a b) = liftM2 (Binary o) (bind a) (bind b)
-    bind (Unary  o a)   = liftM  (Unary  o) (bind a)
-    bind (Ident name)   = case Map.lookup name table of
-      Just a  -> pure $ Real a
-      Nothing -> runtimeE $ "Could not bind expr " ++ name
-    bind a = pure a
+    bindE = \case 
+      (Binary o a b) -> liftM2 (Binary o) (bindE a) (bindE b)
+      (Unary  o a  ) -> fmap   (Unary  o) (bindE a)
+      (Ident  i    ) -> case Map.lookup i etable of
+                          Just a  -> pure $ Real a
+                          Nothing -> runtimeE $ "Could not bind " ++ i
+      other          -> pure other
+    bindA = \case
+      (ArgBit _ _  ) -> runtimeE "Attempted to bind an ArgBit"
+      (ArgReg i    ) -> case Map.lookup i atable of
+                          Just a  -> pure a
+                          Nothing -> runtimeE $ "Could not bind " ++ i
 
 expr :: Expr -> Double
 expr e = case e of
