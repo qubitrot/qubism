@@ -13,7 +13,10 @@ Maintainer  : keith@qubitrot.org
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE LambdaCase          #-}
 
-module Qubism.QASM.Simulation where
+module Qubism.QASM.Simulation 
+  ( runProgram
+  , runStmt
+  ) where
 
 -- For dependent typing
 import GHC.TypeLits
