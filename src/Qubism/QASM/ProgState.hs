@@ -121,7 +121,6 @@ findId name table =
   case Map.lookup name table of
     Just v  -> pure v
     Nothing -> runtimeE $ "Undeclared identifier: " ++ name
-               
 
 addQReg :: Monad m => Id -> Size -> ProgramM m ()
 addQReg name size = do
