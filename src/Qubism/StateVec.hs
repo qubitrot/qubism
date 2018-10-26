@@ -20,6 +20,7 @@ module Qubism.StateVec
   , tensor
   , measureQubit
   , measure
+  , dimension
   ) where
 
 -- For dependent typing
@@ -67,6 +68,10 @@ instance KnownNat n => Show (StateVec n) where
 
 internalLen :: (KnownNat n, Num a) => Sing n -> a
 internalLen = (2 ^) . fromIntegral . fromSing 
+
+-- | Number of qubits in the StateVec
+dimension :: forall (n :: Nat) a. (KnownNat n, Num a) => StateVec n -> a
+dimension _ = fromIntegral $ fromSing (sing :: SNat n)
 
 -- | StateVec's are intialized to |0>
 mkStateVec :: forall n . KnownNat n => StateVec n

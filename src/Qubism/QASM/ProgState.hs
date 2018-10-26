@@ -34,9 +34,9 @@ import Qubism.QASM.AST
 -- be considered independant. A QReg is a portion (perhaps the whole thing)
 -- of a StateVec that is used in a calculation.
 data QReg = QReg {
-  qrId    :: Id,      -- ^ Identifier of the StateVec holding the full state
-  qrStart :: Natural, -- ^ Index of the first qubit
-  qrSize  :: Natural  -- ^ Size of the register
+  qrTarget :: Id,      -- ^ Identifier of the StateVec holding the full state
+  qrStart  :: Natural, -- ^ Index of the first qubit
+  qrSize   :: Natural  -- ^ Size of the register
   } deriving Show
 
 data SomeStateVec = forall n . KnownNat n => SomeSV (StateVec n)
@@ -88,8 +88,8 @@ fuseQRegs :: Monad m => Id -> Id -> ProgramM m Id
 fuseQRegs qr1 qr2 = do
   ps <- get
   let qrs = qregs ps
-  (QReg ssvId1 i1 s1) <- findId qr1 qrs
-  (QReg ssvId2 i2 s2) <- findId qr2 qrs
+  (QReg ssvId1 _ _) <- findId qr1 qrs
+  (QReg ssvId2 _ _) <- findId qr2 qrs
   if ssvId1 == ssvId2 
     then pure ssvId1
     else do 
@@ -98,23 +98,32 @@ fuseQRegs qr1 qr2 = do
       let ssvId' = ssvId1 ++ "(x)" ++ ssvId2
       -- Build the new StateVec
       witnessSV ssv1 $ \(sv1 :: StateVec n1) ->
-        witnessSV ssv2 $ \(sv2 :: StateVec n2) ->
+        witnessSV ssv2 $ \(sv2 :: StateVec n2) -> do
           let sv' = sv1 `tensor` sv2
-          in  writeStateVec sv' ssvId'
-      -- Update QReg's                          -- TODO: Check for additional
-      writeQReg (QReg ssvId' i1         s1) qr1 -- QReg's which may refer to a
-      writeQReg (QReg ssvId' (i1+s1+i2) s2) qr2 -- removed StateVec.
+          writeStateVec sv' ssvId'
+      -- Update QReg's
+          let shift = dimension sv1
+              pass1 = retargetQReg ssvId1 ssvId' 0     <$> qrs
+              pass2 = retargetQReg ssvId2 ssvId' shift <$> pass1
+          ps' <- get
+          put $ ProgState (stVecs ps') pass2 (cregs ps') (funcs ps')
       -- Remove unused StateVecs
       deleteStateVec ssvId1
       deleteStateVec ssvId2
       pure ssvId'
+  where
+    retargetQReg v v' shift (QReg s i1 s1)
+      | v == s    = QReg v' (i1+shift) s1
+      | otherwise = QReg s i1 s1
 
 findId :: Monad m => Id -> Map.Map Id v -> ProgramM m v
 findId name table =
   case Map.lookup name table of
     Just v  -> pure v
-    Nothing -> lift . throwE . RuntimeError
-               $ "Undeclared identifier: " ++ name
+    Nothing -> do
+      ps <- get
+      runtimeE $ "Undeclared identifier: " ++ name
+               
 
 addQReg :: Monad m => Id -> Size -> ProgramM m ()
 addQReg name size = do
@@ -149,8 +158,7 @@ writeCReg creg name = do
   if crSize creg == crSize cr 
     then let crs' = Map.insert name creg crs
          in  put $ ProgState (stVecs ps) (qregs ps) crs' (funcs ps)
-    else lift . throwE . RuntimeError 
-         $ "Mismatched size on overwrite of " ++ name
+    else runtimeE $ "Mismatched size on overwrite of " ++ name
 
 writeBit :: Monad m => Bit -> Id -> Index -> ProgramM m ()
 writeBit bit name i = do
@@ -160,8 +168,7 @@ writeBit bit name i = do
   if i < crSize cr 
     then let crs' = Map.insert name (setBit i bit cr) crs
          in  put $ ProgState (stVecs ps) (qregs ps) crs' (funcs ps)
-    else lift . throwE . RuntimeError 
-         $ "Index out of bounds when writing to " ++ name
+    else runtimeE $ "Index out of bounds when writing to " ++ name
 
 addStateVec :: Monad m => Id -> Size -> ProgramM m ()
 addStateVec name size = do
@@ -195,7 +202,7 @@ addFunc cg name = do
 checkNameConflict :: Monad m => Id -> Map.Map Id v -> ProgramM m ()
 checkNameConflict name table =
   if name `Map.member` table
-    then lift . throwE . RuntimeError $ "Redeclaration of " ++ name
+    then runtimeE $ "Redeclaration of " ++ name
     else pure ()
 
 findQRSize :: Monad m => Id -> ProgramM m Natural

@@ -96,9 +96,9 @@ withIndex2
   -> Index -- ^ QReg 2 index
   -> ProgramM m ()
 withIndex2 g qr1 i qr2 j = do
-  ps   <- get
-  idSV <- fuseQRegs qr1 qr2       -- We must fuse because this is potentially
-  ssv  <- findId idSV (stVecs ps) -- an entangling operation.
+  idSV <- fuseQRegs qr1 qr2 -- We must fuse because this is potentially
+  ps   <- get               -- an entangling operation.
+  ssv  <- findId idSV (stVecs ps)
   (QReg _ s1 _) <- findId qr1 (qregs ps)
   (QReg _ s2 _) <- findId qr2 (qregs ps)
   witnessSV ssv $ \sv ->
