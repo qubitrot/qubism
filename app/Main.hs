@@ -17,4 +17,4 @@ main = do
       st <- runProgram prog
       case st of 
         Left  error  -> print error
-        Right progSt -> print progSt
+        Right progSt -> print "Done." --progSt

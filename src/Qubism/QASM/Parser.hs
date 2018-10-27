@@ -220,7 +220,7 @@ qop = measure <|> reset <|>unitary
     unitary = QUnitary <$> uop
 
 uop :: Parser UnitaryOp
-uop = u <|> cx <|> barrier <|> func
+uop = u <|> cx <|> barrier <|> dump <|> func
   where
     u = do
       _   <- rword "U" *> symbol "("
@@ -244,6 +244,9 @@ uop = u <|> cx <|> barrier <|> func
       params <- option [] $ parens (list expr)
       args   <- list argument
       pure $ Func ident params args
+    dump = do
+      _ <- string ":dump"
+      pure $ Dump
 
 cond :: Parser Stmt
 cond = do

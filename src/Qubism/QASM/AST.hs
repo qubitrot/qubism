@@ -39,6 +39,7 @@ data UnitaryOp
   | CX   Arg Arg
   | Func Id [Expr] [Arg]
   | Barrier [Arg] -- ^ Not a unitary op, but it's a convenient spot
+  | Dump          -- Not official. Write internal state to console.
   deriving (Eq, Show)
 
 data Arg

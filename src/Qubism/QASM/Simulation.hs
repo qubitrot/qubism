@@ -29,6 +29,7 @@ import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Except
 import Control.Monad.Random
 import Numeric.Natural
+import Debug.Trace --For dumping debug state to console.
 
 import Qubism.CReg
 import Qubism.StateVec
@@ -56,6 +57,7 @@ runStmt (UOp op) = case op of
   CX      arg1 arg2       -> cx arg1 arg2
   Func    name exprs args -> customOp name (expr <$> exprs) args
   Barrier _               -> pure ()
+  Dump                    -> get >>= \ps -> trace (show ps) pure ()
 runStmt (Cond name nat op) = do
   ps <- get
   cr <- findId name (cregs ps)
