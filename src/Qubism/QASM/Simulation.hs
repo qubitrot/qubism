@@ -109,38 +109,27 @@ withIndex2 g qr1 i qr2 j = do
         sv'  = g idx1 idx2 #> sv
     in  writeStateVec sv' idSV
 
--- | Lift a stateful, indexed, single qubit function into the ProgramM
--- context. Basically only used as a helper function for measurement atm.
-applyTo
-  :: Monad m
-  => (forall n. KnownNat n 
-      => Finite n 
-      -> StateT (StateVec n) m a)
-  -> Natural
-  -> Arg
-  -> ProgramM m a
-applyTo st i arg = do
-  ps <- get
-  (QReg idSV j _) <- findId (argId arg) (qregs ps)
-  ssv             <- findId idSV (stVecs ps)
-  witnessSV ssv $ \sv -> do
-    let k = finite $ toInteger (i+j)
-    (a, sv') <- lift . lift $ runStateT (st k) sv
-    writeStateVec sv' idSV
-    pure a
-
 observe :: MonadRandom m => Arg -> Arg -> ProgramM m ()
 observe argQ argC = do
   bits <- case argQ of 
-    ArgBit _ k  -> cregBit <$> applyTo measureQubit k argQ
+    ArgBit _ k  -> cregBit <$> go k
     ArgReg name -> do
       ps <- get
       (QReg _ i s) <- findId name (qregs ps)
-      let mq j = applyTo measureQubit j argQ
-      mkCReg <$> traverse mq [i..i+s-1]
+      mkCReg <$> traverse go [i..i+s-1]
   case argC of
     ArgBit name k -> writeBit (crIndex bits 0) name k
     ArgReg _      -> writeCReg bits (argId argC)
+  where 
+    go i = do
+      ps              <- get
+      (QReg idSV j _) <- findId (argId argQ) (qregs ps)
+      ssv             <- findId idSV (stVecs ps)
+      witnessSV ssv $ \sv -> do
+        let k = finite $ toInteger (i+j)
+        (a, sv') <- lift . lift $ runStateT (measureQubit k) sv
+        writeStateVec sv' idSV
+        pure a
 
 cx :: Monad m => Arg -> Arg -> ProgramM m ()
 cx arg1 arg2 = 
@@ -178,6 +167,7 @@ bindNames etable atable op = case op of
   CX a b     -> liftM2 CX (bindA a) (bindA b)
   Barrier as -> Barrier <$> traverse bindA as
   Func i e a -> liftM2 (Func i) (traverse bindE e) (traverse bindA a)
+  Dump       -> pure Dump
   where
     bindE = \case 
       (Binary o a b) -> liftM2 (Binary o) (bindE a) (bindE b)
