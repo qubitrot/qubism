@@ -62,11 +62,11 @@ preparse = mconcat <$> manyTill (include <|> passthrough) eof
 
 passthrough :: PreParser String
 passthrough = manyTill anySingle done
-  where done = eof <|> lookAhead (symbol "include" *> pure ())
+  where done = eof <|> lookAhead (rword "include" *> pure ())
 
 include :: PreParser String
 include = do
-  symbol "include"
+  _      <- rword "include"
   file   <- quotes filepath <* semi
   source <- tryReadFile file
   remain <- getInput
@@ -114,9 +114,21 @@ double =  try (lexeme L.float)
 parens :: LexerT m a -> LexerT m a
 parens = between (symbol "(") (symbol ")")
 
+-- | Reserved words
+rws :: [String]
+rws = ["if","barrier","gate","measure","reset","creg","qreg","pi"
+      ,"sin","cos","tan","exp","ln","sqrt","U","CX"];
+
+rword :: String -> LexerT m String
+rword w = lexeme . try $ string w <* notFollowedBy alphaNumChar
+
 identifier :: LexerT m String
-identifier = lexeme . try $ 
-  (:) <$> letterChar <*> many alphaNumChar
+identifier = lexeme . try $ p >>= check
+  where p       = (:) <$> letterChar <*> many alphaNumChar
+        check x = if x `elem` rws
+                  then fail $ "keyword " ++ show x ++ 
+                              " cannot be an identifier"
+                  else pure x
 
 newIdent :: Parser String
 newIdent = do
@@ -167,12 +179,12 @@ stmt :: Parser Stmt
 stmt =  cond
     <|> regDecl
     <|> gateDecl
-    <|> QOp <$> qop
     <|> UOp <$> uop
+    <|> QOp <$> qop
 
 regDecl :: Parser Stmt
 regDecl = do
-  prefix <- symbol "qreg" <|> symbol "creg"
+  prefix <- rword "qreg" <|> rword "creg"
   ident  <- newIdent
   size   <- brackets natural
   case prefix of
@@ -181,7 +193,7 @@ regDecl = do
 
 gateDecl :: Parser Stmt
 gateDecl = do
-  ident  <- symbol "gate" *> newIdent
+  ident  <- rword "gate" *> newIdent
   gtable <- lift get
   params <- option [] $ parens (list shadowIdent)
   args   <- nonempty shadowIdent
@@ -199,11 +211,11 @@ qop :: Parser QuantumOp
 qop = measure <|> reset <|>unitary
   where 
     measure = do
-      src <- symbol "measure" *> argument
+      src <- rword  "measure" *> argument
       tgt <- symbol "->"      *> argument
       pure $ Measure src tgt
     reset = do
-      tgt <- symbol "reset" *> argument
+      tgt <- rword "reset" *> argument
       pure $ Reset tgt
     unitary = QUnitary <$> uop
 
@@ -211,20 +223,20 @@ uop :: Parser UnitaryOp
 uop = u <|> cx <|> barrier <|> func
   where
     u = do
-      _   <- symbol "U" *> symbol "("
+      _   <- rword "U" *> symbol "("
       p1  <- expr <* symbol ","
       p2  <- expr <* symbol ","
       p3  <- expr <* symbol ")"
       arg <- argument
       pure $ U p1 p2 p3 arg
     cx = do
-      _    <- symbol "CX"
+      _    <- rword "CX"
       arg1 <- argument
       _    <- comma
       arg2 <- argument
       pure $ CX arg1 arg2
     barrier = do
-      _    <- symbol "barrier"
+      _    <- rword "barrier"
       args <- list argument
       pure $ Barrier args
     func = do
@@ -235,7 +247,7 @@ uop = u <|> cx <|> barrier <|> func
 
 cond :: Parser Stmt
 cond = do
-  _ <- symbol "if" *> symbol "("
+  _ <- rword "if" *> symbol "("
   i <- knownIdent
   _ <- symbol "=="
   n <- natural
@@ -253,7 +265,7 @@ argument = do
 
 expr :: Parser Expr
 expr = makeExprParser term exprOps
-  where term =  symbol "pi" *> pure Pi
+  where term =  rword "pi" *> pure Pi
             <|> Ident <$> knownIdent
             <|> Real  <$> double
             <|> parens expr
@@ -261,13 +273,13 @@ expr = makeExprParser term exprOps
 exprOps :: [[Operator Parser Expr]]
 exprOps = 
   [ [ Prefix (Unary  Neg  <$ symbol "-"   ) ]
-  , [ Prefix (Unary  Sin  <$ symbol "sin" )
-    , Prefix (Unary  Cos  <$ symbol "cos" )
-    , Prefix (Unary  Tan  <$ symbol "tan" )
-    , Prefix (Unary  Exp  <$ symbol "exp" )
-    , Prefix (Unary  Ln   <$ symbol "ln"  )
-    , Prefix (Unary  Sqrt <$ symbol "sqrt") ]
-  , [ InfixL (Binary Pow  <$ symbol "pow" ) ]
+  , [ Prefix (Unary  Sin  <$ rword  "sin" )
+    , Prefix (Unary  Cos  <$ rword  "cos" )
+    , Prefix (Unary  Tan  <$ rword  "tan" )
+    , Prefix (Unary  Exp  <$ rword  "exp" )
+    , Prefix (Unary  Ln   <$ rword  "ln"  )
+    , Prefix (Unary  Sqrt <$ rword  "sqrt") ]
+  , [ InfixL (Binary Pow  <$ rword  "pow" ) ]
   , [ InfixL (Binary Mul  <$ symbol "*"   )
     , InfixL (Binary Div  <$ symbol "/"   ) ]
   , [ InfixL (Binary Add  <$ symbol "+"   )
