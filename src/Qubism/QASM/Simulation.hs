@@ -51,7 +51,7 @@ runStmt (GateDecl name params args ops) =
 runStmt (QOp op) = case op of
   QUnitary uop       -> runStmt $ UOp uop
   Measure  argQ argC -> observe argQ argC
-  Reset    arg       -> runtimeE "not yet implemented"
+  Reset    arg       -> reset arg
 runStmt (UOp op) = case op of
   U       p1 p2 p3 arg    -> unitary (expr p1) (expr p2) (expr p3) ##> arg
   CX      arg1 arg2       -> cx arg1 arg2
@@ -131,6 +131,18 @@ observe argQ argC = do
         writeStateVec sv' idSV
         pure a
 
+reset :: Monad m => Arg -> ProgramM m ()
+reset arg = do
+  ps               <- get
+  (QReg ssvId i s) <- findId (argId arg) (qregs ps)
+  ssv              <- findId ssvId (stVecs ps) 
+  witnessSV ssv $ \sv ->
+    let tf k = finite $ toInteger k 
+        sv'  = case arg of
+                 ArgBit _ k -> collapse (tf k) Zero sv 
+                 ArgReg _   -> foldr (\k -> collapse (tf k) Zero) sv [i..s-1]
+    in  writeStateVec sv' ssvId
+  
 cx :: Monad m => Arg -> Arg -> ProgramM m ()
 cx arg1 arg2 = 
   let over qr f = findQRSize qr >>= \s -> mapM_ f [0..(s-1)] 

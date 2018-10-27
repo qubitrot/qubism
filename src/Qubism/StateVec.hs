@@ -18,6 +18,7 @@ module Qubism.StateVec
   , mkQubit
   , normalize
   , tensor
+  , collapse
   , measureQubit
   , measure
   , dimension
