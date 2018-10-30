@@ -9,8 +9,9 @@ Maintainer  : keith@qubitrot.org
 module Qubism.QASM.AST where
 
 import Numeric.Natural
+import Data.Text (Text)
 
-type Id      = String
+type Id      = Text
 type Size    = Natural
 type Index   = Natural
 type Program = [Stmt]

@@ -6,6 +6,7 @@ License     : MIT
 Maintainer  : keith@qubitrot.org
 -}
 
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 
 module Qubism.QASM.Parser 
@@ -21,7 +22,10 @@ import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Class
 import Control.Exception hiding (try)
 import System.IO.Error
-import qualified Data.Map as Map
+
+import qualified Data.Map  as Map
+import qualified Data.Text as T
+import           Data.Text (Text)
 
 import           Text.Megaparsec hiding (State)
 import           Text.Megaparsec.Char
@@ -38,13 +42,13 @@ instance ShowErrorComponent Failure where
   showErrorComponent (IncludeFail file) = 
     "Cannot include: " ++ file ++ " does not exist"
 
-type Parser    = ParsecT Failure String (State IdTable)
-type PreParser = ParsecT Failure String IO
+type Parser    = ParsecT Failure Text (State IdTable)
+type PreParser = ParsecT Failure Text IO
 type IdTable   = Map.Map Id SourcePos
 
 parseOpenQASM 
   :: String -- ^ Name of source file 
-  -> String -- ^ Input for parser
+  -> Text   -- ^ Input for parser
   -> IO (Either String Program)
 parseOpenQASM file input = do
   runParserT preparse file input >>= \case
@@ -57,18 +61,18 @@ parseOpenQASM file input = do
 
 -- | The preparser phase only handles includes at the moment, but may be
 -- expanded later. Screws up line numbering. TODO.
-preparse :: PreParser String
+preparse :: PreParser Text
 preparse = mconcat <$> manyTill (include <|> passthrough) eof
 
-passthrough :: PreParser String
-passthrough = manyTill anySingle done
+passthrough :: PreParser Text
+passthrough = T.pack <$> manyTill anySingle done
   where done = eof <|> lookAhead (rword "include" *> pure ())
 
-include :: PreParser String
+include :: PreParser Text
 include = do
   _      <- rword "include"
   file   <- quotes filepath <* semi
-  source <- tryReadFile file
+  source <- tryReadFile $ T.unpack file
   remain <- getInput
   offset <- getOffset
   setInput  source
@@ -77,15 +81,15 @@ include = do
   setOffset offset
   pure pparse
     
-tryReadFile :: FilePath -> PreParser String
+tryReadFile :: FilePath -> PreParser Text
 tryReadFile file = do
   r <- lift $ tryJust (guard . isDoesNotExistError) (readFile file)
-  case r of Right src -> pure src
-            Left  e   -> customFailure . IncludeFail $ file
+  case r of Right src -> pure $ T.pack src
+            Left  _   -> customFailure . IncludeFail $ file
 
 --------- Lexing --------------------------------------
 
-type LexerT = ParsecT Failure String
+type LexerT = ParsecT Failure Text
 
 sc :: LexerT m ()
 sc = L.space space1 lineCmnt blockCmnt
@@ -95,13 +99,13 @@ sc = L.space space1 lineCmnt blockCmnt
 lexeme :: LexerT m a -> LexerT m a
 lexeme = L.lexeme sc
 
-symbol :: String -> LexerT m String
+symbol :: Text -> LexerT m Text
 symbol = L.symbol sc
 
-semi :: LexerT m String
+semi :: LexerT m Text
 semi = symbol ";"
 
-comma :: LexerT m String
+comma :: LexerT m Text
 comma = symbol ","
 
 natural :: LexerT m Natural
@@ -119,30 +123,30 @@ rws :: [String]
 rws = ["if","barrier","gate","measure","reset","creg","qreg","pi"
       ,"sin","cos","tan","exp","ln","sqrt","U","CX"];
 
-rword :: String -> LexerT m String
+rword :: Text -> LexerT m Text
 rword w = lexeme . try $ string w <* notFollowedBy alphaNumChar
 
-identifier :: LexerT m String
+identifier :: LexerT m Text
 identifier = lexeme . try $ p >>= check
   where p       = (:) <$> letterChar <*> many alphaNumChar
         check x = if x `elem` rws
-                  then fail $ "keyword " ++ show x ++ 
+                  then fail $ "keyword " ++ x ++
                               " cannot be an identifier"
-                  else pure x
+                  else pure $ T.pack x
 
-newIdent :: Parser String
+newIdent :: Parser Text
 newIdent = do
   i <- identifier
   insertId i =<< getSourcePos
   pure i
 
-knownIdent :: Parser String
+knownIdent :: Parser Text
 knownIdent = do
   i <- identifier
   a <- lookupId i
   case a of
     Just _  -> pure i
-    Nothing -> fail $ "Undeclared identifier: " ++ i
+    Nothing -> fail $ "Undeclared identifier: " ++ T.unpack i
 
 brackets :: LexerT m a -> LexerT m a
 brackets = between (symbol "[") (symbol "]")
@@ -159,10 +163,10 @@ list p = sepEndBy p comma
 nonempty :: LexerT m a -> LexerT m [a]
 nonempty p = sepEndBy1 p comma
 
-filepath :: LexerT m String
-filepath = many $  alphaNumChar
-               <|> char '.' 
-               <|> char '/'
+filepath :: LexerT m Text
+filepath = T.pack <$> many (alphaNumChar
+                            <|> char '.' 
+                            <|> char '/')
 
 ---------- Parsing --------------------------------------
 
@@ -296,7 +300,7 @@ lookupId i = lift . gets $ Map.lookup i
 
 insertId :: Id -> SourcePos -> Parser ()
 insertId i sp = lookupId i >>= \case
-    Just _  -> fail $ "Redeclaration of " ++ i
+    Just _  -> fail $ "Redeclaration of " ++ T.unpack i
     Nothing -> lift . modify $ Map.insert i sp
 
 deleteId :: Id -> Parser ()

@@ -6,6 +6,7 @@ License     : MIT
 Maintainer  : keith@qubitrot.org
 -}
 
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE RankNTypes          #-}
@@ -158,7 +159,7 @@ cx arg1 arg2 =
         if s1 == s2 
           then mapM_ (\i -> withIndex2 cnot qr1 i qr2 i) [0..(s1-1)]
           else runtimeE $ "QRegs of different sizes supplied to CX: "
-                       ++ qr1 ++ " " ++ qr2;
+                        <> qr1 <> " " <> qr2;
 
 customOp :: MonadRandom m => Id -> [Double] -> [Arg] -> ProgramM m ()
 customOp name params args = do
@@ -186,13 +187,13 @@ bindNames etable atable op = case op of
       (Unary  o a  ) -> fmap   (Unary  o) (bindE a)
       (Ident  i    ) -> case Map.lookup i etable of
                           Just a  -> pure $ Real a
-                          Nothing -> runtimeE $ "Could not bind " ++ i
+                          Nothing -> runtimeE $ "Could not bind " <> i
       other          -> pure other
     bindA = \case
       (ArgBit _ _  ) -> runtimeE "Attempted to bind an ArgBit"
       (ArgReg i    ) -> case Map.lookup i atable of
                           Just a  -> pure a
-                          Nothing -> runtimeE $ "Could not bind " ++ i
+                          Nothing -> runtimeE $ "Could not bind " <> i
 
 expr :: Expr -> Double
 expr e = case e of

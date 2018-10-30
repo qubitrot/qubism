@@ -8,6 +8,7 @@ Maintainer  : keith@qubitrot.org
 
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
 
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE RankNTypes          #-}
@@ -21,6 +22,7 @@ import GHC.TypeLits
 import Data.Singletons
 
 import qualified Data.Map.Strict as Map
+import qualified Data.Text       as T
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Except
 import Control.Monad.Random
@@ -64,12 +66,12 @@ instance Show ProgState where
 blankState :: ProgState
 blankState = ProgState Map.empty Map.empty Map.empty Map.empty
 
-newtype RuntimeError = RuntimeError String
+newtype RuntimeError = RuntimeError T.Text
   deriving Show
 
 type ProgramM m = StateT ProgState (ExceptT RuntimeError m)
 
-runtimeE :: Monad m => String -> ProgramM m a
+runtimeE :: Monad m => T.Text -> ProgramM m a
 runtimeE = lift . throwE . RuntimeError
 
 witnessSV 
@@ -95,7 +97,7 @@ fuseQRegs qr1 qr2 = do
     else do 
       ssv1 <- findId ssvId1 (stVecs ps)
       ssv2 <- findId ssvId2 (stVecs ps)
-      let ssvId' = ssvId1 ++ "(x)" ++ ssvId2
+      let ssvId' = ssvId1 <> "(x)" <> ssvId2
       -- Build the new StateVec
       witnessSV ssv1 $ \(sv1 :: StateVec n1) ->
         witnessSV ssv2 $ \(sv2 :: StateVec n2) -> do
@@ -120,7 +122,7 @@ findId :: Monad m => Id -> Map.Map Id v -> ProgramM m v
 findId name table =
   case Map.lookup name table of
     Just v  -> pure v
-    Nothing -> runtimeE $ "Undeclared identifier: " ++ name
+    Nothing -> runtimeE $ "Undeclared identifier: " <> name
 
 addQReg :: Monad m => Id -> Size -> ProgramM m ()
 addQReg name size = do
@@ -155,7 +157,7 @@ writeCReg creg name = do
   if crSize creg == crSize cr 
     then let crs' = Map.insert name creg crs
          in  put $ ProgState (stVecs ps) (qregs ps) crs' (funcs ps)
-    else runtimeE $ "Mismatched size on overwrite of " ++ name
+    else runtimeE $ "Mismatched size on overwrite of " <> name
 
 writeBit :: Monad m => Bit -> Id -> Index -> ProgramM m ()
 writeBit bit name i = do
@@ -165,7 +167,7 @@ writeBit bit name i = do
   if i < crSize cr 
     then let crs' = Map.insert name (setBit i bit cr) crs
          in  put $ ProgState (stVecs ps) (qregs ps) crs' (funcs ps)
-    else runtimeE $ "Index out of bounds when writing to " ++ name
+    else runtimeE $ "Index out of bounds when writing to " <> name
 
 addStateVec :: Monad m => Id -> Size -> ProgramM m ()
 addStateVec name size = do
@@ -199,7 +201,7 @@ addFunc cg name = do
 checkNameConflict :: Monad m => Id -> Map.Map Id v -> ProgramM m ()
 checkNameConflict name table =
   if name `Map.member` table
-    then runtimeE $ "Redeclaration of " ++ name
+    then runtimeE $ "Redeclaration of " <> name
     else pure ()
 
 findQRSize :: Monad m => Id -> ProgramM m Natural
