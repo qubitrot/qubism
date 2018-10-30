@@ -49,7 +49,7 @@ type IdTable   = Map.Map Id SourcePos
 parseOpenQASM 
   :: String -- ^ Name of source file 
   -> Text   -- ^ Input for parser
-  -> IO (Either String Program)
+  -> IO (Either String AST)
 parseOpenQASM file input = do
   runParserT preparse file input >>= \case
     Left  err -> pure . Left  $ errorBundlePretty err
@@ -170,13 +170,13 @@ filepath = T.pack <$> many (alphaNumChar
 
 ---------- Parsing --------------------------------------
 
-mainprogram :: Parser Program
+mainprogram :: Parser AST
 mainprogram = header *> program
 
 header :: Parser ()
 header = sc *> symbol "OPENQASM 2.0;" *> pure ()
 
-program :: Parser Program
+program :: Parser AST
 program = sepEndBy1 stmt (semi <|> symbol "}")
 
 stmt :: Parser Stmt

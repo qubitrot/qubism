@@ -11,10 +11,10 @@ module Qubism.QASM.AST where
 import Numeric.Natural
 import Data.Text (Text)
 
-type Id      = Text
-type Size    = Natural
-type Index   = Natural
-type Program = [Stmt]
+type Id    = Text
+type Size  = Natural
+type Index = Natural
+type AST   = [Stmt]
 
 data Stmt
   = QRegDecl Id Size
@@ -40,7 +40,7 @@ data UnitaryOp
   | CX   Arg Arg
   | Func Id [Expr] [Arg]
   | Barrier [Arg] -- ^ Not a unitary op, but it's a convenient spot
-  | Dump          -- Not official. Write internal state to console.
+  | Dump          -- ^ Not QASM official. Write internal state to console.
   deriving (Eq, Show)
 
 data Arg

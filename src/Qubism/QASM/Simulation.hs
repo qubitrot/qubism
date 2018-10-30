@@ -38,7 +38,7 @@ import Qubism.QGate
 import Qubism.QASM.AST
 import Qubism.QASM.ProgState
 
-runProgram :: Program -> IO (Either RuntimeError ProgState)
+runProgram :: AST -> IO (Either RuntimeError ProgState)
 runProgram prog =
   let comp = mapM_ runStmt prog
   in  runExceptT . execStateT comp $ blankState
