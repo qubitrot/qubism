@@ -44,6 +44,7 @@ runProgram prog =
   in  runExceptT . execStateT comp $ blankState
 
 runStmt :: MonadRandom m => Stmt -> ProgramM m ()
+runStmt (PosInfo  p    stmt) = putPos p *> runStmt stmt
 runStmt (QRegDecl name size) = addQReg name size
 runStmt (CRegDecl name size) = addCReg name size
 runStmt (GateDecl name params args ops) =

@@ -10,6 +10,7 @@ module Qubism.QASM.AST where
 
 import Numeric.Natural
 import Data.Text (Text)
+import Text.Megaparsec (SourcePos)
 
 type Id    = Text
 type Size  = Natural
@@ -27,6 +28,7 @@ data Stmt
   | QOp QuantumOp
   | UOp UnitaryOp
   | Cond Id Natural QuantumOp
+  | PosInfo SourcePos Stmt
   deriving (Eq, Show)
 
 data QuantumOp

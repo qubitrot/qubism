@@ -180,7 +180,8 @@ program :: Parser AST
 program = sepEndBy1 stmt (semi <|> symbol "}")
 
 stmt :: Parser Stmt
-stmt =  cond
+stmt =  attachPos 
+     $  cond
     <|> regDecl
     <|> gateDecl
     <|> UOp <$> uop
@@ -305,3 +306,6 @@ insertId i sp = lookupId i >>= \case
 
 deleteId :: Id -> Parser ()
 deleteId i = lift . modify $ Map.delete i
+
+attachPos :: Parser Stmt -> Parser Stmt
+attachPos p = PosInfo <$> getSourcePos <*> p
