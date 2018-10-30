@@ -10,9 +10,7 @@ Maintainer  : keith@qubitrot.org
 {-# LANGUAGE LambdaCase #-}
 
 module Qubism.QASM.Parser 
-  ( parseOpenQASM
-  , preparse
-  , passthrough )
+  ( parseOpenQASM )
   where
 
 import Data.Void
@@ -20,6 +18,7 @@ import Numeric.Natural
 import Control.Monad
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Class
+import Control.Monad.IO.Class
 import Control.Exception hiding (try)
 import System.IO.Error
 
@@ -42,50 +41,18 @@ instance ShowErrorComponent Failure where
   showErrorComponent (IncludeFail file) = 
     "Cannot include: " ++ file ++ " does not exist"
 
-type Parser    = ParsecT Failure Text (State IdTable)
-type PreParser = ParsecT Failure Text IO
+type Parser    = ParsecT Failure Text (StateT IdTable IO)
 type IdTable   = Map.Map Id SourcePos
 
 parseOpenQASM 
   :: String -- ^ Name of source file 
   -> Text   -- ^ Input for parser
   -> IO (Either String AST)
-parseOpenQASM file input = do
-  runParserT preparse file input >>= \case
-    Left  err -> pure . Left  $ errorBundlePretty err
-    Right pp  -> do
-      let parsed = runParserT mainprogram file pp
-      case runState parsed Map.empty of
+parseOpenQASM file input = 
+  let parsed = runParserT mainprogram file input
+  in  runStateT parsed Map.empty >>= \case
         (Left  err,  _) -> pure . Left  $ errorBundlePretty err
         (Right prog, _) -> pure . Right $ prog
-
--- | The preparser phase only handles includes at the moment, but may be
--- expanded later. Screws up line numbering. TODO.
-preparse :: PreParser Text
-preparse = mconcat <$> manyTill (include <|> passthrough) eof
-
-passthrough :: PreParser Text
-passthrough = T.pack <$> manyTill anySingle done
-  where done = eof <|> lookAhead (rword "include" *> pure ())
-
-include :: PreParser Text
-include = do
-  _      <- rword "include"
-  file   <- quotes filepath <* semi
-  source <- tryReadFile $ T.unpack file
-  remain <- getInput
-  offset <- getOffset
-  setInput  source
-  pparse <- preparse
-  setInput  remain
-  setOffset offset
-  pure pparse
-    
-tryReadFile :: FilePath -> PreParser Text
-tryReadFile file = do
-  r <- lift $ tryJust (guard . isDoesNotExistError) (readFile file)
-  case r of Right src -> pure $ T.pack src
-            Left  _   -> customFailure . IncludeFail $ file
 
 --------- Lexing --------------------------------------
 
@@ -121,7 +88,7 @@ parens = between (symbol "(") (symbol ")")
 -- | Reserved words
 rws :: [String]
 rws = ["if","barrier","gate","measure","reset","creg","qreg","pi"
-      ,"sin","cos","tan","exp","ln","sqrt","U","CX"];
+      ,"sin","cos","tan","exp","ln","sqrt","U","CX","include"];
 
 rword :: Text -> LexerT m Text
 rword w = lexeme . try $ string w <* notFollowedBy alphaNumChar
@@ -177,7 +144,7 @@ header :: Parser ()
 header = sc *> symbol "OPENQASM 2.0;" *> pure ()
 
 program :: Parser AST
-program = sepEndBy1 stmt (semi <|> symbol "}")
+program = sc *> sepEndBy1 stmt (semi <|> symbol "}")
 
 stmt :: Parser Stmt
 stmt =  attachPos 
@@ -186,6 +153,7 @@ stmt =  attachPos
     <|> gateDecl
     <|> UOp <$> uop
     <|> QOp <$> qop
+    <|> include
 
 regDecl :: Parser Stmt
 regDecl = do
@@ -211,6 +179,23 @@ gateDecl = do
       sp <- getSourcePos
       lift . modify $ Map.insert i sp
       pure i
+
+include :: Parser Stmt
+include = do
+  _      <- rword "include"
+  file   <- quotes filepath
+  source <- tryReadFile $ T.unpack file
+  pstate <- getParserState
+  setInput source
+  ast    <- program
+  setParserState pstate
+  pure $ StmtList ast
+  
+tryReadFile :: FilePath -> Parser Text
+tryReadFile file = do
+  r <- liftIO $ tryJust (guard . isDoesNotExistError) (readFile file)
+  case r of Right src -> pure $ T.pack src
+            Left  _   -> customFailure . IncludeFail $ file
 
 qop :: Parser QuantumOp
 qop = measure <|> reset <|>unitary

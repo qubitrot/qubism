@@ -28,6 +28,7 @@ data Stmt
   | QOp QuantumOp
   | UOp UnitaryOp
   | Cond Id Natural QuantumOp
+  | StmtList [Stmt]
   | PosInfo SourcePos Stmt
   deriving (Eq, Show)
 
