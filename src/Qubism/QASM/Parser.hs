@@ -27,6 +27,7 @@ import qualified Data.Text as T
 import           Data.Text (Text)
 
 import           Text.Megaparsec hiding (State)
+import qualified Text.Megaparsec as MP
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 import           Control.Monad.Combinators.Expr 
@@ -183,10 +184,10 @@ gateDecl = do
 include :: Parser Stmt
 include = do
   _      <- rword "include"
-  file   <- quotes filepath
-  source <- tryReadFile $ T.unpack file
+  file   <- T.unpack <$> quotes filepath
+  source <- tryReadFile $ file
   pstate <- getParserState
-  setInput source
+  setParserState $ initialState file source
   ast    <- program
   setParserState pstate
   pure $ StmtList ast
@@ -294,3 +295,17 @@ deleteId i = lift . modify $ Map.delete i
 
 attachPos :: Parser Stmt -> Parser Stmt
 attachPos p = PosInfo <$> getSourcePos <*> p
+
+-- Borrowed from Megaparsec source since it doesn't export it.
+initialState :: String -> s -> MP.State s
+initialState name s = MP.State
+  { stateInput  = s
+  , stateOffset = 0
+  , statePosState = PosState
+    { pstateInput = s
+    , pstateOffset = 0
+    , pstateSourcePos = initialPos name
+    , pstateTabWidth = defaultTabWidth
+    , pstateLinePrefix = ""
+    }
+}
