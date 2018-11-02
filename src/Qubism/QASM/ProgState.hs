@@ -8,6 +8,7 @@ Maintainer  : keith@qubitrot.org
 
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.KnownNat.Solver #-}
 
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
@@ -95,24 +96,24 @@ runtimeE msg = do
   lift . throwE $ RuntimeError pos msg
 
 putPos :: Monad m => SourcePos -> ProgramM m ()
-putPos p = get >>= \ps -> put $
-  ProgState (stVecs ps) (qregs ps) (cregs ps) (funcs ps) p
+putPos p = get >>= \ProgState {..} -> put $
+  ProgState stVecs qregs cregs funcs p
 
 putSVecs :: Monad m => Map Id SomeStateVec -> ProgramM m ()
-putSVecs ssv = get >>= \ps -> put $
-  ProgState ssv (qregs ps) (cregs ps) (funcs ps) (pos ps)
+putSVecs ssvs = get >>= \ProgState {..} -> put $
+  ProgState ssvs qregs cregs funcs pos
 
 putQRegs :: Monad m => Map Id QReg -> ProgramM m ()
-putQRegs qrs = get >>= \ps -> put $
-  ProgState (stVecs ps) qrs (cregs ps) (funcs ps) (pos ps)
+putQRegs qrs = get >>= \ProgState {..} -> put $
+  ProgState stVecs qrs cregs funcs pos
 
 putCRegs :: Monad m => Map Id CReg -> ProgramM m ()
-putCRegs crs = get >>= \ps -> put $
-  ProgState (stVecs ps) (qregs ps) crs (funcs ps) (pos ps)
+putCRegs crs = get >>= \ProgState {..} -> put $
+  ProgState stVecs qregs crs funcs pos
 
 putFuncs :: Monad m => Map Id CustomGate -> ProgramM m ()
-putFuncs fs = get >>= \ps -> put $
-  ProgState (stVecs ps) (qregs ps) (cregs ps) fs (pos ps)
+putFuncs fs = get >>= \ProgState {..} -> put $
+  ProgState stVecs qregs cregs fs pos
 
 -- | QReg's are often independant, so they can be backed by independant
 -- StateVecs. But when QReg's become entangled we must store the combined
