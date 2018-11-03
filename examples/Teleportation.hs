@@ -27,10 +27,3 @@ teleport1 a = do
     c1 <- measureQubit 1
     gate $ ifBit c0 $ onJust 2 pauliZ
     gate $ ifBit c1 $ onJust 2 pauliX
-  
-main :: IO ()
-main = do
-  let qr = unitary 0.3 0.2 0.1 #> mkQubit
-  print qr
-  total <- teleport1 qr
-  print total
