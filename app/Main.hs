@@ -44,7 +44,7 @@ repl = evalStateT loop (initialState Nothing, blankState)
         _    -> act input
     act input = do
       (idt, ps) <- get
-      parsed    <- lift $ parseOpenQASMLn idt input
+      parsed    <- lift $ parseOpenQASM' idt input
       case parsed of
         Left  err         -> lift $ print err
         Right (ast, idt') -> do

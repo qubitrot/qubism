@@ -12,13 +12,14 @@ Maintainer  : keith@qubitrot.org
 
 module Qubism.QASM.Parser 
   ( parseOpenQASM 
-  , parseOpenQASMLn
+  , parseOpenQASM'
   , IdTable
   , ParserState
   , initialState
   ) where
 
 import Data.Void
+import Data.Maybe
 import Numeric.Natural
 import Control.Monad
 import Control.Monad.Trans.State.Strict
@@ -57,21 +58,20 @@ data ParserState = ParserState
   }
 
 parseOpenQASM 
-  :: String -- ^ Name of source file 
-  -> Text   -- ^ Input for parser
+  :: FilePath -- ^ Name of source file 
+  -> Text     -- ^ Input for parser
   -> IO (Either String AST)
-parseOpenQASM file input = 
-  let parsed = runParserT mainprogram file input
-  in  runStateT parsed (initialState $ Just file) >>= \case
-        (Left  err,  _) -> pure . Left  $ errorBundlePretty err
-        (Right prog, _) -> pure . Right $ prog
+parseOpenQASM fp input = 
+  let parsed = parseOpenQASM' (initialState $ Just fp) input
+  in  (fmap . fmap) fst parsed
 
-parseOpenQASMLn
+parseOpenQASM'
   :: ParserState
   -> Text      
   -> IO (Either String (AST,ParserState))
-parseOpenQASMLn s input = 
-  let parsed = runParserT program "stdin" input
+parseOpenQASM' s input = 
+  let path   = fromMaybe "" $ filePath s
+      parsed = runParserT program path input
   in  runStateT parsed s >>= \case
         (Left  err,  _ ) -> pure . Left  $ errorBundlePretty err
         (Right prog, s') -> pure . Right $ (prog, s')
