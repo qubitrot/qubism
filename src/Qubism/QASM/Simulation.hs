@@ -16,6 +16,7 @@ Maintainer  : keith@qubitrot.org
 
 module Qubism.QASM.Simulation 
   ( runProgram
+  , runProgram'
   , runStmt
   ) where
 
@@ -42,6 +43,14 @@ runProgram :: AST -> IO (Either RuntimeError ProgState)
 runProgram prog =
   let comp = mapM_ runStmt prog
   in  runExceptT . execStateT comp $ blankState
+
+runProgram' 
+  :: AST 
+  -> ProgState 
+  -> IO (Either RuntimeError ProgState)
+runProgram' ast ps =
+  let comp = mapM_ runStmt ast
+  in  runExceptT . execStateT comp $ ps
 
 runStmt :: MonadRandom m => Stmt -> ProgramM m ()
 runStmt (PosInfo  p    stmt) = putPos p *> runStmt stmt

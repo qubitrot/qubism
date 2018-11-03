@@ -10,8 +10,10 @@ Maintainer  : keith@qubitrot.org
 {-# LANGUAGE LambdaCase #-}
 
 module Qubism.QASM.Parser 
-  ( parseOpenQASM )
-  where
+  ( parseOpenQASM 
+  , parseOpenQASMLn
+  , IdTable
+  ) where
 
 import Data.Void
 import Numeric.Natural
@@ -54,6 +56,16 @@ parseOpenQASM file input =
   in  runStateT parsed Map.empty >>= \case
         (Left  err,  _) -> pure . Left  $ errorBundlePretty err
         (Right prog, _) -> pure . Right $ prog
+
+parseOpenQASMLn
+  :: IdTable -- ^ Table of known Id's
+  -> Text    -- ^ Input for parser
+  -> IO (Either String (AST,IdTable))
+parseOpenQASMLn idt input = 
+  let parsed = runParserT program "stdin" input
+  in  runStateT parsed idt >>= \case
+        (Left  err,  _   ) -> pure . Left  $ errorBundlePretty err
+        (Right prog, idt') -> pure . Right $ (prog, idt')
 
 --------- Lexing --------------------------------------
 
