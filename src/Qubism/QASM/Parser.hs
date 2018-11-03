@@ -8,11 +8,14 @@ Maintainer  : keith@qubitrot.org
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Qubism.QASM.Parser 
   ( parseOpenQASM 
   , parseOpenQASMLn
   , IdTable
+  , ParserState
+  , initialState
   ) where
 
 import Data.Void
@@ -44,8 +47,12 @@ instance ShowErrorComponent Failure where
   showErrorComponent (IncludeFail file) = 
     "Cannot include: " ++ file ++ " does not exist"
 
-type Parser    = ParsecT Failure Text (StateT IdTable IO)
+type Parser    = ParsecT Failure Text (StateT ParserState IO)
 type IdTable   = Map.Map Id SourcePos
+
+data ParserState = ParserState
+  { idTable :: Map.Map Id SourcePos
+  }
 
 parseOpenQASM 
   :: String -- ^ Name of source file 
@@ -53,19 +60,24 @@ parseOpenQASM
   -> IO (Either String AST)
 parseOpenQASM file input = 
   let parsed = runParserT mainprogram file input
-  in  runStateT parsed Map.empty >>= \case
+  in  runStateT parsed (ParserState Map.empty) >>= \case
         (Left  err,  _) -> pure . Left  $ errorBundlePretty err
         (Right prog, _) -> pure . Right $ prog
 
 parseOpenQASMLn
-  :: IdTable -- ^ Table of known Id's
-  -> Text    -- ^ Input for parser
-  -> IO (Either String (AST,IdTable))
+  :: ParserState
+  -> Text      
+  -> IO (Either String (AST,ParserState))
 parseOpenQASMLn idt input = 
   let parsed = runParserT program "stdin" input
   in  runStateT parsed idt >>= \case
         (Left  err,  _   ) -> pure . Left  $ errorBundlePretty err
         (Right prog, idt') -> pure . Right $ (prog, idt')
+
+initialState :: ParserState
+initialState = ParserState 
+  { idTable = Map.empty
+  }
 
 --------- Lexing --------------------------------------
 
@@ -190,7 +202,8 @@ gateDecl = do
     shadowIdent = do
       i  <- identifier
       sp <- getSourcePos
-      lift . modify $ Map.insert i sp
+      lift . modify $ \ParserState {..} -> -- TODO: Do this properly
+        ParserState { idTable = Map.insert i sp idTable }
       pure i
 
 include :: Parser Stmt
@@ -199,7 +212,7 @@ include = do
   file   <- T.unpack <$> quotes filepath
   source <- tryReadFile $ file
   pstate <- getParserState
-  setParserState $ initialState file source
+  setParserState $ initialStateMP file source
   ast    <- program
   setParserState pstate
   pure $ StmtList ast
@@ -295,22 +308,24 @@ exprOps =
 ---------- Utilities -----------
 
 lookupId :: Id -> Parser (Maybe SourcePos)
-lookupId i = lift . gets $ Map.lookup i
+lookupId i = lift . gets $ Map.lookup i . idTable
 
 insertId :: Id -> SourcePos -> Parser ()
 insertId i sp = lookupId i >>= \case
     Just _  -> fail $ "Redeclaration of " ++ T.unpack i
-    Nothing -> lift . modify $ Map.insert i sp
+    Nothing -> lift . modify $ \ParserState {..} -> 
+                 ParserState { idTable = Map.insert i sp idTable }
 
 deleteId :: Id -> Parser ()
-deleteId i = lift . modify $ Map.delete i
+deleteId i = lift . modify $ \ParserState {..} -> 
+               ParserState { idTable = Map.delete i idTable }
 
 attachPos :: Parser Stmt -> Parser Stmt
 attachPos p = PosInfo <$> getSourcePos <*> p
 
 -- Borrowed from Megaparsec source since it doesn't export it.
-initialState :: String -> s -> MP.State s
-initialState name s = MP.State
+initialStateMP :: String -> s -> MP.State s
+initialStateMP name s = MP.State
   { stateInput  = s
   , stateOffset = 0
   , statePosState = PosState

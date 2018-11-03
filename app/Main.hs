@@ -32,9 +32,9 @@ evalFile filename = do
         Right _   -> print "Done."
 
 repl :: IO ()
-repl = evalStateT loop (Map.empty, blankState)
+repl = evalStateT loop (initialState, blankState)
   where 
-    loop :: StateT (IdTable, ProgState) IO ()
+    loop :: StateT (ParserState, ProgState) IO ()
     loop = do
       lift $ putStr "QASM> "
       lift $ hFlush stdout
