@@ -34,6 +34,7 @@ dependencies:
 - megaparsec >= 7.0.0
 - parser-combinators
 - text
+- filepath
 
 library:
   source-dirs: src

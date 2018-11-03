@@ -26,6 +26,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.IO.Class
 import Control.Exception hiding (try)
 import System.IO.Error
+import System.FilePath
 
 import qualified Data.Map  as Map
 import qualified Data.Text as T
@@ -51,7 +52,8 @@ type Parser    = ParsecT Failure Text (StateT ParserState IO)
 type IdTable   = Map.Map Id SourcePos
 
 data ParserState = ParserState
-  { idTable :: Map.Map Id SourcePos
+  { idTable  :: Map.Map Id SourcePos
+  , filePath :: Maybe FilePath
   }
 
 parseOpenQASM 
@@ -60,7 +62,7 @@ parseOpenQASM
   -> IO (Either String AST)
 parseOpenQASM file input = 
   let parsed = runParserT mainprogram file input
-  in  runStateT parsed (ParserState Map.empty) >>= \case
+  in  runStateT parsed (initialState $ Just file) >>= \case
         (Left  err,  _) -> pure . Left  $ errorBundlePretty err
         (Right prog, _) -> pure . Right $ prog
 
@@ -68,15 +70,16 @@ parseOpenQASMLn
   :: ParserState
   -> Text      
   -> IO (Either String (AST,ParserState))
-parseOpenQASMLn idt input = 
+parseOpenQASMLn s input = 
   let parsed = runParserT program "stdin" input
-  in  runStateT parsed idt >>= \case
-        (Left  err,  _   ) -> pure . Left  $ errorBundlePretty err
-        (Right prog, idt') -> pure . Right $ (prog, idt')
+  in  runStateT parsed s >>= \case
+        (Left  err,  _ ) -> pure . Left  $ errorBundlePretty err
+        (Right prog, s') -> pure . Right $ (prog, s')
 
-initialState :: ParserState
-initialState = ParserState 
-  { idTable = Map.empty
+initialState :: Maybe FilePath -> ParserState
+initialState fp = ParserState 
+  { idTable  = Map.empty
+  , filePath = fp
   }
 
 --------- Lexing --------------------------------------
@@ -203,19 +206,32 @@ gateDecl = do
       i  <- identifier
       sp <- getSourcePos
       lift . modify $ \ParserState {..} -> -- TODO: Do this properly
-        ParserState { idTable = Map.insert i sp idTable }
+        ParserState { idTable = Map.insert i sp idTable
+                    , filePath = filePath }
       pure i
 
 include :: Parser Stmt
 include = do
   _      <- rword "include"
-  file   <- T.unpack <$> quotes filepath
+  file   <- path =<< T.unpack <$> quotes filepath
   source <- tryReadFile $ file
-  pstate <- getParserState
+  -- Store things we need later
+  prevMP <- getParserState
+  prevFP <- lift . gets $ filePath
+  -- Set states as needed for new file
   setParserState $ initialStateMP file source
+  lift . modify $ \p -> p { filePath = Just file }
+  -- Go
   ast    <- program
-  setParserState pstate
+  -- Restore things and return
+  setParserState prevMP
+  lift . modify $ \p -> p { filePath = prevFP }
   pure $ StmtList ast
+  where
+    path f = lift (gets filePath) >>= \case
+               Nothing -> pure f
+               Just p  -> let (d,_) = splitFileName p
+                          in  pure  $ d ++ f
   
 tryReadFile :: FilePath -> Parser Text
 tryReadFile file = do
@@ -313,12 +329,14 @@ lookupId i = lift . gets $ Map.lookup i . idTable
 insertId :: Id -> SourcePos -> Parser ()
 insertId i sp = lookupId i >>= \case
     Just _  -> fail $ "Redeclaration of " ++ T.unpack i
-    Nothing -> lift . modify $ \ParserState {..} -> 
-                 ParserState { idTable = Map.insert i sp idTable }
+    Nothing -> lift . modify $ \ParserState {..} -> ParserState 
+                 { idTable  = Map.insert i sp idTable
+                 , filePath = filePath }
 
 deleteId :: Id -> Parser ()
-deleteId i = lift . modify $ \ParserState {..} -> 
-               ParserState { idTable = Map.delete i idTable }
+deleteId i = lift . modify $ \ParserState {..} -> ParserState 
+               { idTable = Map.delete i idTable
+               , filePath = filePath }
 
 attachPos :: Parser Stmt -> Parser Stmt
 attachPos p = PosInfo <$> getSourcePos <*> p

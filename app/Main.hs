@@ -32,7 +32,7 @@ evalFile filename = do
         Right _   -> print "Done."
 
 repl :: IO ()
-repl = evalStateT loop (initialState, blankState)
+repl = evalStateT loop (initialState Nothing, blankState)
   where 
     loop :: StateT (ParserState, ProgState) IO ()
     loop = do
