@@ -46,7 +46,7 @@ repl = evalStateT loop (initialState Nothing, blankState)
       (idt, ps) <- get
       parsed    <- lift $ parseOpenQASM' idt input
       case parsed of
-        Left  err         -> lift $ print err
+        Left  err         -> lift $ putStr err
         Right (ast, idt') -> do
           result <- lift $ runProgram' ast ps
           case result of
