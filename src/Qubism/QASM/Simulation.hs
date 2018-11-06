@@ -127,8 +127,8 @@ observe argQ argC = do
     ArgBit _ k  -> cregBit <$> go k
     ArgReg name -> do
       ps <- get
-      (QReg _ i s) <- findId name (qregs ps)
-      mkCReg <$> traverse go [i..i+s-1]
+      s  <- qrSize <$> findId name (qregs ps)
+      mkCReg <$> traverse go [0..s-1]
   case argC of
     ArgBit name k -> writeBit (crIndex bits 0) name k
     ArgReg _      -> writeCReg bits (argId argC)
