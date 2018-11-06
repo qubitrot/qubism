@@ -48,7 +48,7 @@ data QReg = QReg {
 data SomeStateVec = forall n . KnownNat n => SomeSV (StateVec n)
 
 instance Show SomeStateVec where
-  show (SomeSV sv) = "\n" ++ show sv
+  show (SomeSV sv) = show sv
 
 witnessSV 
   :: SomeStateVec
@@ -79,6 +79,20 @@ instance Show ProgState where
 blankState :: ProgState
 blankState = ProgState Map.empty Map.empty 
                        Map.empty Map.empty (initialPos "") --Could be better
+
+prettyProgState :: ProgState -> String
+prettyProgState ProgState {..} =
+  "Dump of the internal state: \n\n" ++
+  Map.foldlWithKey shSV "" stVecs ++ "\n" ++
+  Map.foldlWithKey shQR "" qregs  ++ "\n" ++
+  Map.foldlWithKey shCR "" cregs
+  where
+    shSV str i sv = str ++ "State Vector " ++ T.unpack i ++ ":\n" ++ show sv
+    shQR str i qr = str ++ "QReg " ++ T.unpack i ++ "[" ++ show (qrSize qr)
+                        ++ "] -- targets state vector " ++ show (qrTarget qr)
+                        ++ " starting at qubit " ++ show (qrStart qr) ++ "\n"
+    shCR str i cr = str ++ "CReg " ++ T.unpack i ++ "[" ++ show (crSize cr)
+                        ++ "] = " ++ show cr ++ "\n"
 
 data RuntimeError = RuntimeError SourcePos T.Text
 

@@ -69,7 +69,7 @@ runStmt (UOp op) = case op of
   CX      arg1 arg2       -> cx arg1 arg2
   Func    name exprs args -> customOp name (expr <$> exprs) args
   Barrier _               -> pure ()
-  Dump                    -> get >>= \ps -> trace (show ps) pure ()
+  Dump                    -> get >>= \ps -> trace (prettyProgState ps) pure ()
 runStmt (Cond name nat op) = do
   ps <- get
   cr <- findId name (cregs ps)
