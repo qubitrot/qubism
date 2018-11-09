@@ -181,14 +181,12 @@ filepath = T.pack <$> many (alphaNumChar
 
 ---------- Parsing --------------------------------------
 
-mainprogram :: Parser AST
-mainprogram = header *> program
-
 header :: Parser ()
 header = sc *> symbol "OPENQASM 2.0;" *> pure ()
 
 program :: Parser AST
-program = sc *> sepEndBy1 stmt (semi <|> symbol "}")
+program =  option () (try header) *> sc
+        *> sepEndBy1 stmt (semi <|> symbol "}")
 
 stmt :: Parser Stmt
 stmt =  attachPos 
@@ -221,9 +219,7 @@ gateDecl = do
     shadowIdent = do
       i  <- identifier
       sp <- getSourcePos
-      lift . modify $ \ParserState {..} -> -- TODO: Do this properly
-        ParserState { idTable = Map.insert i sp idTable
-                    , filePath = filePath }
+      lift . modify $ \p -> p { idTable = Map.insert i sp (idTable p) }
       pure i
 
 include :: Parser Stmt
