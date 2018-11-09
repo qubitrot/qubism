@@ -29,10 +29,12 @@ evalFile filename = do
       st <- runProgram prog
       case st of 
         Left  err -> print err
-        Right _   -> print "Done."
+        Right _   -> putStrLn "Done."
 
 repl :: IO ()
-repl = evalStateT loop (initialState Nothing, blankState)
+repl = 
+  let istate = initialState Nothing ""
+  in  evalStateT loop (istate, blankState)
   where 
     loop :: StateT (ParserState, ProgState) IO ()
     loop = do

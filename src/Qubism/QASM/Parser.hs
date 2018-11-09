@@ -53,8 +53,9 @@ type Parser    = ParsecT Failure Text (StateT ParserState IO)
 type IdTable   = Map.Map Id SourcePos
 
 data ParserState = ParserState
-  { idTable  :: Map.Map Id SourcePos
-  , filePath :: Maybe FilePath
+  { idTable      :: Map.Map Id SourcePos
+  , filePath     :: Maybe FilePath
+  , currentInput :: Text
   }
 
 parseOpenQASM 
@@ -62,7 +63,8 @@ parseOpenQASM
   -> Text     -- ^ Input for parser
   -> IO (Either String AST)
 parseOpenQASM fp input = 
-  let parsed = parseOpenQASM' (initialState $ Just fp) input
+  let istate = initialState (Just fp) input
+      parsed = parseOpenQASM' istate input
   in  (fmap . fmap) fst parsed
 
 parseOpenQASM'
@@ -73,13 +75,27 @@ parseOpenQASM' s input =
   let path   = fromMaybe "" $ filePath s
       parsed = runParserT program path input
   in  runStateT parsed s >>= \case
-        (Left  err,  _ ) -> pure . Left  $ errorBundlePretty err
+        (Left  err,  s') -> pure . Left  $ showError s' err
         (Right prog, s') -> pure . Right $ (prog, s')
+  where
+    showError s' (ParseErrorBundle b _) = errorBundlePretty $
+      ParseErrorBundle b PosState
+        { pstateInput = currentInput s'
+        , pstateOffset = 0
+        , pstateSourcePos = initialPos $ fromMaybe "" $ filePath s'
+        , pstateTabWidth = defaultTabWidth
+        , pstateLinePrefix = ""
+        }
+    -- showError is nessisary because megaparsec's errorBundlePretty
+    -- assumes that the input stream runParserT begins with is the same
+    -- throughout. Unfortunately the use of include below violates this
+    -- assumption by loading source from files.
 
-initialState :: Maybe FilePath -> ParserState
-initialState fp = ParserState 
+initialState :: Maybe FilePath -> Text -> ParserState
+initialState fp s = ParserState 
   { idTable  = Map.empty
   , filePath = fp
+  , currentInput = s
   }
 
 --------- Lexing --------------------------------------
@@ -215,23 +231,24 @@ include = do
   _      <- rword "include"
   file   <- path =<< T.unpack <$> quotes filepath
   source <- tryReadFile $ file
-  -- Store things we need later
-  prevMP <- getParserState
-  prevFP <- lift . gets $ filePath
-  -- Set states as needed for new file
-  setParserState $ initialStateMP file source
-  lift . modify $ \p -> p { filePath = Just file }
-  -- Go
+  prevSt <- getInputState
+  putInputState $ (Just file, source, initialStateMP file source)
   ast    <- program
-  -- Restore things and return
-  setParserState prevMP
-  lift . modify $ \p -> p { filePath = prevFP }
+  putInputState prevSt
   pure $ StmtList ast
   where
+    getInputState = do
+      fp <- lift . gets $ filePath 
+      ci <- lift . gets $ currentInput
+      mp <- getParserState -- Megaparsec's state, not ours.
+      pure (fp,ci,mp)
+    putInputState (fp,ci,mp) = do
+      lift . modify $ \p -> p { filePath = fp, currentInput = ci }
+      setParserState mp -- Megaparsec's state
     path f = lift (gets filePath) >>= \case
-               Nothing -> pure f
-               Just p  -> let (d,_) = splitFileName p
-                          in  pure  $ d ++ f
+      Nothing -> pure f
+      Just p  -> let (d,_) = splitFileName p
+                 in  pure  $ d ++ f
   
 tryReadFile :: FilePath -> Parser Text
 tryReadFile file = do
@@ -331,12 +348,16 @@ insertId i sp = lookupId i >>= \case
     Just _  -> fail $ "Redeclaration of " ++ T.unpack i
     Nothing -> lift . modify $ \ParserState {..} -> ParserState 
                  { idTable  = Map.insert i sp idTable
-                 , filePath = filePath }
+                 , filePath = filePath 
+                 , currentInput = currentInput 
+                 }
 
 deleteId :: Id -> Parser ()
 deleteId i = lift . modify $ \ParserState {..} -> ParserState 
                { idTable = Map.delete i idTable
-               , filePath = filePath }
+               , filePath = filePath 
+               , currentInput = currentInput
+               }
 
 attachPos :: Parser Stmt -> Parser Stmt
 attachPos p = PosInfo <$> getSourcePos <*> p
